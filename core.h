@@ -49,6 +49,6 @@ int set_keyval(const char *key, const char *val);
 int get_keyval(const char *key, char *val);
 int format(void);
 
-extern lkp_kv_cfg config;
+extern lkp_kv_cfg data_config;
 
 #endif /* LKP_KV_H */

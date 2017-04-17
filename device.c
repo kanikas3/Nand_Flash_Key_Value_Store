@@ -113,7 +113,7 @@ static long device_ioctl(struct file *file, unsigned int ioctl_num,
 
 			key = (char *)vmalloc((kv.key_len + 1) * sizeof(char));
 			val =
-			    (char *)vmalloc((config.page_size) * sizeof(char));
+			    (char *)vmalloc((data_config.page_size) * sizeof(char));
 
 			/* get the key */
 			err_bytes_copied +=
