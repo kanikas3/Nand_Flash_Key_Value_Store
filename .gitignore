@@ -1,0 +1,9 @@
+cscope.out
+tags
+.core.o.cmd
+.device.o.cmd
+.prototype.ko.cmd
+.prototype.mod.o.cmd
+.prototype.o.cmd
+.tmp_versions/
+prototype.ko
