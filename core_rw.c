@@ -63,7 +63,7 @@ int get_key_page(const char *key, uint64_t ppage, uint64_t vpage,
 				val_len = *(buffer + 8);
 
 				if (!strncmp(key, (buffer + 12), key_len)) {
-					*ret_page = ppage;
+					*ret_page = vpage;
 					return 0;
 				}
 			}
@@ -78,7 +78,7 @@ int get_key_page(const char *key, uint64_t ppage, uint64_t vpage,
 	return -1;
 }
 
-int mark_page_invalid(uint64_t page)
+int mark_page_invalid(uint64_t page, uint64_t number)
 {
 	if (page < 0 ||
 	    page > data_config.pages_per_block * data_config.nb_blocks)
@@ -153,7 +153,7 @@ int set_keyval(const char *key, const char *val)
 	ret = get_key_page(key, ppage, vpage, &lpage);
 
 	if (ret != -1) {
-		if (mark_page_invalid(lpage)) {
+		if (mark_page_invalid(lpage, 1)) {
 			printk(PRINT_PREF "Tried to mark %llu \n", lpage);
 			return -1;
 		}
@@ -232,7 +232,7 @@ int delete_key(const char *key)
 	ret = get_key_page(key, ppage, vpage, &lpage);
 
 	if (ret != -1) {
-		if (mark_page_invalid(lpage)) {
+		if (mark_page_invalid(lpage, 1)) {
 			printk(PRINT_PREF "Tried to mark %llu \n", lpage);
 			return -1;
 		}
