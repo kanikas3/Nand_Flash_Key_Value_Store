@@ -48,6 +48,10 @@ typedef struct {
 int set_keyval(const char *key, const char *val);
 int get_keyval(const char *key, char *val);
 int format(void);
+int read_page(int page_index, char *buf, lkp_kv_cfg *config);
+int write_page(int page_index, const char *buf, lkp_kv_cfg *config);
+int read_bytes (int page_index, char *buf, lkp_kv_cfg *config,
+			size_t bytes);
 
 extern lkp_kv_cfg data_config;
 

@@ -18,10 +18,8 @@ static int init_config(int mtd_index, lkp_kv_cfg *config);
 static void print_config(lkp_kv_cfg *config);
 static int init_scan(lkp_kv_cfg *config);
 static void print_config(lkp_kv_cfg *config);
-static int read_page(int page_index, char *buf, lkp_kv_cfg *config);
-static int write_page(int page_index, const char *buf, lkp_kv_cfg *config);
-static int get_next_page_index_to_write(lkp_kv_cfg *config);
-static int get_next_free_block(lkp_kv_cfg *config);
+int read_page(int page_index, char *buf, lkp_kv_cfg *config);
+int write_page(int page_index, const char *buf, lkp_kv_cfg *config);
 static void data_format_callback(struct erase_info *e);
 static void metadata_format_callback(struct erase_info *e);
 static int format_config(lkp_kv_cfg *config,
@@ -206,11 +204,26 @@ err_free:
 	return -1;
 }
 
+
+int read_bytes (int page_index, char *buf, lkp_kv_cfg *config,
+			size_t bytes)
+{
+	uint64_t addr;
+	size_t retlen;
+
+	/* compute the flash target address in bytes */
+	addr = ((uint64_t) page_index) * ((uint64_t) config->page_size);
+
+	/* call the NAND driver MTD to perform the read operation */
+	return config->mtd->_read(config->mtd, addr, bytes, &retlen,
+				 buf);
+}
+
 /**
  * Read the flash page with index page_index, data read are placed in buf
  * Retourne 0 when ok, something else on error
  */
-static int read_page(int page_index, char *buf, lkp_kv_cfg *config)
+int read_page(int page_index, char *buf, lkp_kv_cfg *config)
 {
 	uint64_t addr;
 	size_t retlen;
@@ -230,7 +243,7 @@ static int read_page(int page_index, char *buf, lkp_kv_cfg *config)
  * -1 if we are in read-only mode
  * -2 when a write error occurs
  */
-static int write_page(int page_index, const char *buf, lkp_kv_cfg *config)
+int write_page(int page_index, const char *buf, lkp_kv_cfg *config)
 {
 	uint64_t addr;
 	size_t retlen;
@@ -254,60 +267,8 @@ static int write_page(int page_index, const char *buf, lkp_kv_cfg *config)
 							   pages_per_block] =
 	    PG_VALID;
 
-	/* set the flash page that will serve the next write oepration.
-	 * if the flash partition is full, switch to read-only mode */
-	if (get_next_page_index_to_write(config) == -1) {
-		printk(PRINT_PREF
-		       "no free block left... switching to read-only mode\n");
-		config->read_only = 1;
-		return -1;
-	}
-
 	return 0;
 }
-
-/**
- * After an insertion, determine which is the flash page that will receive the
- * next insertion. Return the correspondign flash page index, or -1 if the
- * flash is full
- */
-static int get_next_page_index_to_write(lkp_kv_cfg *config)
-{
-	/* in general we want the next flash page in the block */
-	config->current_page_offset++;
-
-	/* but sometimes we need to jump to the next flash block */
-	if (config->current_page_offset ==
-	    config->block_size / config->page_size) {
-		config->current_block = get_next_free_block(config);
-
-		/* flash full */
-		if (config->current_block == -1)
-			return -1;
-
-		config->blocks[config->current_block].state = BLK_USED;
-		config->current_page_offset = 0;
-	}
-	return config->current_page_offset;
-}
-
-/**
- * When a flash block is full, we choose the next one through this function.
- * Return the next block index, or -1 on error
- */
-static int get_next_free_block(lkp_kv_cfg *config)
-{
-	int i;
-
-	for (i = 0; i < config->nb_blocks; i++)
-		if (config->blocks[i].state == BLK_FREE)
-			return i;
-
-	/* If we get there, no free block left... */
-
-	return -1;
-}
-
 
 /**
  * Callback for the erase operation done during the format process
@@ -412,142 +373,20 @@ int format(void)
 	ret = format_config(&data_config, data_format_callback);
 
 	if (ret != 0) {
-		printk("Format data partition failed\n");
+		printk(PRINT_PREF "Format data partition failed\n");
 		return ret;
 	}
 
 	ret = format_config(&meta_config, metadata_format_callback);
 
 	if (ret != 0) {
-		printk("Format meta-data partition failed\n");
+		printk(PRINT_PREF "Format meta-data partition failed\n");
 		return ret;
 	}
 
 	return ret;
 }
 
-
-/**
- * Adding a key-value couple. Returns -1 when ok and a negative value on error:
- * -1 when the size to write is too big
- * -2 when the key already exists
- * -3 when we are in read-only mode
- * -4 when the MTD driver returns an error
- */
-int set_keyval(const char *key, const char *val)
-{
-	int key_len, val_len, i, ret;
-	char *buffer;
-
-	key_len = strlen(key);
-	val_len = strlen(val);
-
-	if ((key_len + val_len + 2 * sizeof(int)) > data_config.page_size) {
-		/* size to write is too big */
-		return -1;
-	}
-
-	/* the buffer that we are going to write on flash */
-	buffer = (char *)vmalloc(data_config.page_size * sizeof(char));
-
-	/* if the key already exists, return without writing anything to flash */
-	ret = get_keyval(key, buffer);
-	if (ret >= 0) {
-		printk(PRINT_PREF "Key \"%s\" already exists in page %d\n", key,
-		       ret);
-		vfree(buffer);
-		return -2;
-	}
-
-	/* prepare the buffer we are going to write on flash */
-	for (i = 0; i < data_config.page_size; i++)
-		buffer[i] = 0x0;
-
-	/* key size ... */
-	memcpy(buffer, &key_len, sizeof(int));
-	/* ... value size ... */
-	memcpy(buffer + sizeof(int), &val_len, sizeof(int));
-	/* ... the key itself ... */
-	memcpy(buffer + 2 * sizeof(int), key, key_len);
-	/* ... then the value itself. */
-	memcpy(buffer + 2 * sizeof(int) + key_len, val, val_len);
-
-	/* actual write on flash */
-	ret =
-	    write_page(data_config.current_block * data_config.pages_per_block +
-		       data_config.current_page_offset, buffer, &data_config);
-
-	vfree(buffer);
-
-	if (ret == -1)		/* read-only */
-		return -3;
-	else if (ret == -2)	/* write error */
-		return -4;
-
-	return 0;
-}
-
-/**
- * Getting a value from a key.
- * Returns the index of the page containing the key/value couple on success,
- * and a negative number on error:
- * -1 when the key is not found
- * -2 on MTD read error
- */
-int get_keyval(const char *key, char *val)
-{
-	int i, j;
-	char *buffer;
-
-	buffer = (char *)vmalloc(data_config.page_size * sizeof(char));
-
-	/* read the entirety of valid flash pages until we found the requested key */
-	for (i = 0; i < data_config.nb_blocks; i++)
-		if (data_config.blocks[i].state == BLK_USED)
-			for (j = 0; j < data_config.pages_per_block; j++)
-				if (data_config.blocks[i].pages_states[j] ==
-				    PG_VALID) {
-					int key_len, val_len;
-					char *cur_key, *cur_val;
-
-					/* flash read */
-					if (read_page
-					    (i * data_config.pages_per_block+j,
-					     buffer, &data_config) != 0) {
-						vfree(buffer);
-						return -2;
-					}
-
-					/* get the key and value */
-					memcpy(&key_len, buffer, sizeof(int));
-					memcpy(&val_len, buffer + sizeof(int),
-					       sizeof(int));
-
-					if (key_len != 0xFFFFFFFF) {	/* shoud always be true */
-						cur_key =
-						    buffer + 2 * sizeof(int);
-						cur_val =
-						    buffer + 2 * sizeof(int) +
-						    key_len;
-						if (!strncmp
-						    (cur_key, key,
-						     strlen(key))) {
-							/* key found */
-							memcpy(val, cur_val,
-							       val_len);
-							val[val_len] = '\0';
-							vfree(buffer);
-							return i *
-							    data_config.
-							    pages_per_block + j;
-						}
-					}
-				}
-
-	/* key not found */
-	vfree(buffer);
-	return -1;
-}
 
 
 /* Setup init and exit functions */
