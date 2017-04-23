@@ -25,6 +25,12 @@ typedef struct {
 	int status;
 } keyval;
 
+typedef struct {
+	char *key;
+	int key_len;
+	int status;
+} keyt;
+
 /* The 3 ioctl commands that can be sent to the virtual device: read operation 
  * (get), write operation (set) and format operation. The 3rd parameter 
  * represents the parameter that is passed when the ioctl command is called: 
@@ -34,7 +40,8 @@ typedef struct {
  */
 #define IOCTL_GET _IOR(MAJOR_NUM, 0, keyval *)
 #define IOCTL_SET _IOR(MAJOR_NUM, 1, keyval *)
-#define IOCTL_FORMAT _IOR(MAJOR_NUM, 2, int *)
+#define IOCTL_DEL _IOR(MAJOR_NUM, 2, key_t *)
+#define IOCTL_FORMAT _IOR(MAJOR_NUM, 3, int *)
 
 int device_init(void);
 void device_exit(void);

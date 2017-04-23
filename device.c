@@ -59,6 +59,40 @@ static long device_ioctl(struct file *file, unsigned int ioctl_num,
 			break;
 		}
 
+	case IOCTL_DEL:
+		{
+			keyt skey;
+			int err_bytes_copied = 0;
+			int ret = 0;
+			char *key;
+
+			/* get the keyval structure from userspace
+			 * warning: character pointers in the struct still point
+			 * to userspace data */
+			err_bytes_copied +=
+			    copy_from_user(&skey, (void *)ioctl_param,
+					   sizeof(keyt));
+
+			key = (char *)vmalloc((skey.key_len + 1) * sizeof(char));
+
+			/* now that we have the character string sizes, we get get the
+			 * string themselves */
+			err_bytes_copied +=
+			    copy_from_user(key, skey.key, skey.key_len + 1);
+
+			if (!err_bytes_copied)
+				ret = del_keyval(key);	/* call module core function */
+			else
+				ret = -7;
+
+			put_user(ret,
+				 (int *)&(((keyt *) (ioctl_param))->status));
+
+			vfree(key);
+
+			break;
+		}
+
 		/* set operation */
 	case IOCTL_SET:
 		{

@@ -209,7 +209,7 @@ int set_keyval(const char *key, const char *val)
 	return -1;
 }
 
-int delete_key(const char *key)
+int del_keyval(const char *key)
 {
 	int ret;
 	uint64_t vpage;
@@ -224,6 +224,7 @@ int delete_key(const char *key)
 			printk(PRINT_PREF "Tried to mark %llu \n", lpage);
 			return -1;
 		}
+		return 0;
 	}
 
 	printk(PRINT_PREF "Could not find key %s\n", key);

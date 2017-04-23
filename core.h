@@ -39,6 +39,7 @@ typedef struct {
 /* export some prototypes for function used in the virtual device file */
 int set_keyval(const char *key, const char *val);
 int get_keyval(const char *key, char *val);
+int del_keyval(const char *key);
 int format(void);
 int read_page(int page_index, char *buf, lkp_kv_cfg *config);
 int write_page(int page_index, const char *buf, lkp_kv_cfg *config);
