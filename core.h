@@ -8,24 +8,19 @@
 #include <linux/mtd/mtd.h>
 #include <linux/semaphore.h>
 
-/* state for a flash block: used or free */
-typedef enum {
-	BLK_FREE,
-	BLK_USED
-} blk_state;
+#define PAGE_UNALLOCATED 0xFFFFFFFFFFFFFFFF
+#define PAGE_GARBAGE_RECLAIMED 0x8FFFFFFFFFFFFFFF
 
-/* state for a flash page: used or free */
-typedef enum {
-	PG_FREE,
-	PG_VALID
-} page_state;
+#define PAGE_NOT_MAPPED 0x0
+#define PAGE_INVALID 0x1
+#define PAGE_VALID 0x2
+#define PAGE_FREE 0x3
+#define PAGE_RECLAIMED 0x4
 
-/* data structure containing the state of a flash block and the state of the 
- * flash pages it contains */
-typedef struct {
-	blk_state state;
-	page_state *pages_states;
-} blk_info;
+typedef struct free_list_t {
+	uint64_t ppage;
+	struct list_head list;
+} free_list;
 
 /* global attributes for our system */
 typedef struct {
@@ -34,10 +29,7 @@ typedef struct {
 	int nb_blocks;		/* amount of managed flash blocks */
 	int block_size;		/* flash bock size in bytes */
 	int page_size;		/* flash page size in bytes */
-	int current_block;	/* current flash block we write to */
-	int current_page_offset;	/* index of the next flash page to write in the current block */
 	int pages_per_block;	/* number of flash pages per block */
-	blk_info *blocks;	/* metadata : flash blocks/pages state */
 	int format_done;	/* used during format operation */
 	int read_only;		/* are we in read-only mode? */
 	struct semaphore format_lock;	/* used during the format operation */
@@ -50,9 +42,13 @@ int get_keyval(const char *key, char *val);
 int format(void);
 int read_page(int page_index, char *buf, lkp_kv_cfg *config);
 int write_page(int page_index, const char *buf, lkp_kv_cfg *config);
-int read_bytes (int page_index, char *buf, lkp_kv_cfg *config,
-			size_t bytes);
 
+int create_mapping(uint64_t vpage, uint64_t *ppage);
+
+int get_existing_mapping(uint64_t vpage, uint64_t *ppage);
+
+int mark_vpage_invalid(uint64_t vpage, uint64_t num_pages);
 extern lkp_kv_cfg data_config;
+extern uint8_t *page_buffer;
 
 #endif /* LKP_KV_H */
