@@ -433,6 +433,39 @@ int create_mapping(uint64_t vpage, uint64_t *ppage)
 	return 0;
 }
 
+
+int create_mapping_multipage(uint64_t vpage, uint32_t num_pages)
+{
+	uint32_t page = 0;
+	uint64_t lpage = vpage;
+	uint64_t ppage;
+
+	while (page < num_pages) {
+		if (mapper[lpage] != PAGE_UNALLOCATED &&
+		    mapper[lpage] != PAGE_GARBAGE_RECLAIMED) {
+		    	printk("multipage mapping now allowed for %llu \n", lpage);
+			return -1;
+		}
+		lpage++;
+		page++;
+	}
+
+	lpage = vpage;
+	page = 0;
+
+	while (page < num_pages) {
+		if (create_mapping(lpage, &ppage)) {
+		    	printk("mapping failed for %llu \n", lpage);
+			return -ENOMEM;
+		}
+		lpage++;
+		page++;
+	}
+
+	return 0;
+}
+
+
 uint8_t get_ppage_state(uint64_t ppage)
 {
 	uint64_t offset = ppage / 4;

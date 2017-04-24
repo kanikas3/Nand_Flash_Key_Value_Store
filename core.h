@@ -56,6 +56,8 @@ int erase_block(uint64_t block_index, lkp_kv_cfg *config);
 
 int garbage_collection(int threshold);
 
+int create_mapping_multipage(uint64_t vpage, uint32_t num_pages);
+
 extern lkp_kv_cfg data_config;
 extern uint8_t *page_buffer;
 
