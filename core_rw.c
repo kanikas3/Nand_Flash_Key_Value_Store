@@ -224,6 +224,19 @@ int del_keyval(const char *key)
 			printk(PRINT_PREF "Tried to mark %llu \n", lpage);
 			return -1;
 		}
+
+		if (garbage_collection(32)) {
+			printk("Garbage collection failed\n");
+		}
+
+			if (read_page(5, page_buffer, &data_config) == 0) {
+				lpage = *((uint64_t *) page_buffer);
+				printk("Lpage was %llx\n", lpage);
+			}
+			if (read_page(2, page_buffer, &data_config) == 0) {
+				lpage = *((uint64_t *) page_buffer);
+				printk("Lpage was %llx\n", lpage);
+			}
 		return 0;
 	}
 

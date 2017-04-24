@@ -46,9 +46,16 @@ int write_page(int page_index, const char *buf, lkp_kv_cfg *config);
 
 int create_mapping(uint64_t vpage, uint64_t *ppage);
 
+int create_mapping_new_block(uint64_t vpage, uint64_t *ppage, uint64_t block_counter);
+
 int get_existing_mapping(uint64_t vpage, uint64_t *ppage);
 
 int mark_vpage_invalid(uint64_t vpage, uint64_t num_pages);
+
+int erase_block(uint64_t block_index, lkp_kv_cfg *config);
+
+int garbage_collection(int threshold);
+
 extern lkp_kv_cfg data_config;
 extern uint8_t *page_buffer;
 

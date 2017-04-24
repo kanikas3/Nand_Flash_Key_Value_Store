@@ -44,8 +44,6 @@ void fix_free_page_pointer(int ppage);
 
 int migrate(uint64_t block_counter);
 
-int garbage_collection(int threshold);
-
 int get_free_page(uint64_t *ppage);
 
 /**
@@ -238,7 +236,8 @@ void fix_free_page_pointer(int ppage)
 int migrate(uint64_t block_counter)
 {
 	int num_pages = data_config.pages_per_block;
-	int i = 0;
+	uint64_t i = 0;
+	int j = 0;
 	uint64_t ppage = block_counter * data_config.pages_per_block;
 	uint64_t offset = ppage / 4;
 	int index =  ppage % 4;
@@ -246,21 +245,31 @@ int migrate(uint64_t block_counter)
 	int ret;
 	uint8_t status;
 
-	while (i < num_pages) {
+	while (j < num_pages) {
 		status = (bitmap[offset] >> (index * 2)) & 0x3;
 
+		printk("Status for %u was %d\n", j, status);
 		if (status == PAGE_VALID) {
+
+			for (i = 0; i < data_config.nb_blocks *
+					data_config.pages_per_block; i++) {
+				if (mapper[i] == ppage) {
+					ret = create_mapping_new_block(i, &npage, block_counter);
+
+					if (ret < 0) {
+						printk(PRINT_PREF "Creating mapping for migration failed\n");
+						return ret;
+					}
+
+					printk("vpage was %llu\n", i);
+					break;
+				}
+			}
+
 			ret = read_page(ppage, page_buffer, &data_config);
 
 			if (ret < 0) {
 				printk(PRINT_PREF "Reading page for migration failed\n");
-				return ret;
-			}
-
-			ret = get_free_page(&npage);
-
-			if (ret != 0) {
-				printk(PRINT_PREF "Migration cannot happen as there is no free page to write \n");
 				return ret;
 			}
 
@@ -274,12 +283,7 @@ int migrate(uint64_t block_counter)
 			bitmap[offset] = (bitmap[offset] &
 					  ~(0x3 << index * 2)) |
 				(PAGE_FREE << index * 2);
-
-			for (i = 0; i < data_config.nb_blocks *
-					data_config.pages_per_block; i++) {
-				if (mapper[i] == ppage)
-					mapper[i] = npage;
-			}
+			printk("Moving page %llu to page %llu\n", ppage, npage);
 
 		} else if (status == PAGE_INVALID) {
 			bitmap[offset] = (bitmap[offset] &
@@ -288,8 +292,11 @@ int migrate(uint64_t block_counter)
 
 			for (i = 0; i < data_config.nb_blocks *
 					data_config.pages_per_block; i++) {
-				if (mapper[i] == ppage)
+				if (mapper[i] == ppage) {
 					mapper[i] = PAGE_GARBAGE_RECLAIMED;
+					break;
+					printk("Reclaiming %llu\n", i);
+				}
 			}
 
 		}
@@ -301,7 +308,7 @@ int migrate(uint64_t block_counter)
 			index=0;
 		}
 
-		i++;
+		j++;
 		ppage++;
 	}
 
@@ -341,12 +348,15 @@ int garbage_collection(int threshold)
 
 			if (invalid_page_counter >= data_config.pages_per_block
 								/ threshold) {
+				printk("Migration %llu \n", block_counter);
 				ret = migrate(block_counter);
 
 				if (ret) {
 					printk(PRINT_PREF "Migration of block %llu for garbage collection failed \n", block_counter);
 					return -1;
 				}
+
+				erase_block(block_counter, &data_config);
 			}
 			block_counter++;
 			page_per_block_counter = 0;
@@ -369,6 +379,37 @@ int get_free_page(uint64_t *ppage)
 
 	fix_free_page_pointer(current_free_page+1);
 
+	return 0;
+}
+
+
+int create_mapping_new_block(uint64_t vpage, uint64_t *ppage,
+			     uint64_t blk_number)
+{
+	int ret = get_free_page(ppage);
+	uint64_t offset = *ppage / 4;
+	int index = *ppage % 4;
+
+
+	while (*ppage >= blk_number * data_config.pages_per_block && *ppage <
+	       (blk_number + 1) * data_config.pages_per_block) {
+
+		ret = get_free_page(ppage);
+		if (ret != 0) {
+			printk(PRINT_PREF "could not create mapping due to no free page\n");
+			return ret;
+		}
+
+		offset = *ppage / 4;
+		index = *ppage % 4;
+	}
+
+	mapper[vpage] = *ppage;
+
+	bitmap[offset] = (bitmap[offset] & ~(0x3 << index * 2)) |
+			(PAGE_VALID << index * 2);
+
+	printk(PRINT_PREF "%s offset %llu index %d ppage %llx vpage %llx bitmap %x \n", __func__, offset, index, *ppage, vpage, bitmap[offset]);
 	return 0;
 }
 
@@ -463,6 +504,7 @@ int mark_vpage_invalid(uint64_t vpage, uint64_t num_pages)
 static void __exit lkp_kv_exit(void)
 {
 	printk(PRINT_PREF "Exiting ... \n");
+
 	device_exit();
 	destroy_config(&meta_config);
 	destroy_config(&data_config);
