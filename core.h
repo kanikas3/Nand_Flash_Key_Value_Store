@@ -60,5 +60,6 @@ int create_mapping_multipage(uint64_t vpage, uint32_t num_pages);
 
 extern lkp_kv_cfg data_config;
 extern uint8_t *page_buffer;
+extern uint64_t total_written_page;
 
 #endif /* LKP_KV_H */
