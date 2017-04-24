@@ -27,6 +27,8 @@ uint64_t mapper_pages;
 
 uint64_t current_free_page;
 
+uint64_t total_written_page = 0;
+
 static int init_config(int mtd_index, lkp_kv_cfg *config);
 static void print_config(lkp_kv_cfg *config);
 static void print_config(lkp_kv_cfg *config);
@@ -110,6 +112,8 @@ static int construct_meta_data(lkp_kv_cfg *meta_config,
 			printk(PRINT_PREF "You must format the flash before usage\n");
 			return -1;
 		}
+
+		total_written_page = *(signature + 4);
 	}
 
 	if (bitmap_size % 4 == 0)
@@ -300,6 +304,7 @@ int migrate(uint64_t block_counter)
 				}
 			}
 
+			total_written_page--;
 		}
 
 		index++;
@@ -357,7 +362,11 @@ int garbage_collection(int threshold)
 					return -1;
 				}
 
-				erase_block(block_counter, 1, &data_config);
+				if (erase_block(block_counter, 1, &data_config)) {
+				
+					printk(PRINT_PREF "erase block %llu for garbage collection failed \n", block_counter);
+					return -1;
+				}
 			}
 			block_counter++;
 			page_per_block_counter = 0;
@@ -410,6 +419,8 @@ int create_mapping_new_block(uint64_t vpage, uint64_t *ppage,
 	bitmap[offset] = (bitmap[offset] & ~(0x3 << index * 2)) |
 			(PAGE_VALID << index * 2);
 
+	total_written_page++;
+
 	printk(PRINT_PREF "%s offset %llu index %d ppage %llx vpage %llx bitmap %x \n", __func__, offset, index, *ppage, vpage, bitmap[offset]);
 	return 0;
 }
@@ -429,6 +440,8 @@ int create_mapping(uint64_t vpage, uint64_t *ppage)
 
 	bitmap[offset] = (bitmap[offset] & ~(0x3 << index * 2)) |
 			(PAGE_VALID << index * 2);
+
+	total_written_page++;
 
 	printk(PRINT_PREF "%s offset %llu index %d ppage %llx vpage %llx bitmap %x \n", __func__, offset, index, *ppage, vpage, bitmap[offset]);
 	return 0;
@@ -850,6 +863,8 @@ static int create_meta_data(lkp_kv_cfg *meta_config)
 		page_buffer[i] = 0xFF;
 
 	*signature = 0xdeadbeef;
+
+	*(signature+4) = total_written_page;
 
 	ret = write_page(0, page_buffer, meta_config);
 

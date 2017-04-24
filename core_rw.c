@@ -316,6 +316,13 @@ int set_keyval(const char *key, const char *val)
 	uint32_t key_max_write = 0;
 	uint32_t size;
 
+	if (total_written_page >
+	    3 * (data_config.nb_blocks * data_config.pages_per_block) / 4) {
+
+		if (garbage_collection(2)) {
+			printk(PRINT_PREF "garbage collection has failed\n");
+		}
+	}
 
 	vpage = hash(key) % data_config.nb_blocks * data_config.pages_per_block;
 
@@ -504,6 +511,14 @@ int del_keyval(const char *key)
 	uint64_t lpage;
 	uint32_t num_pages = 0;
 
+	if (total_written_page >
+	    3 * (data_config.nb_blocks * data_config.pages_per_block) / 4) {
+
+		if (garbage_collection(2)) {
+			printk(PRINT_PREF "garbage collection has failed\n");
+		}
+	}
+
 	vpage = hash(key) % data_config.nb_blocks * data_config.pages_per_block;
 
 	ret = get_key_page(key, vpage, &lpage, &num_pages);
@@ -513,7 +528,7 @@ int del_keyval(const char *key)
 			printk(PRINT_PREF "Tried to mark %llu \n", lpage);
 			return -1;
 		}
-
+/*
 		if (garbage_collection(32)) {
 			printk("Garbage collection failed\n");
 		}
@@ -526,6 +541,7 @@ int del_keyval(const char *key)
 				lpage = *((uint64_t *) page_buffer);
 				printk("Lpage was %llx\n", lpage);
 			}
+			*/
 		return 0;
 	}
 
