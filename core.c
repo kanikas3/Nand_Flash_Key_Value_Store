@@ -46,6 +46,7 @@ int migrate(uint64_t block_counter);
 
 int get_free_page(uint64_t *ppage);
 
+static int create_meta_data(lkp_kv_cfg *meta_config);
 /**
  * Module initialization function
  */
@@ -356,7 +357,7 @@ int garbage_collection(int threshold)
 					return -1;
 				}
 
-				erase_block(block_counter, &data_config);
+				erase_block(block_counter, 1, &data_config);
 			}
 			block_counter++;
 			page_per_block_counter = 0;
@@ -531,12 +532,52 @@ int mark_vpage_invalid(uint64_t vpage, uint64_t num_pages)
 	return 0;
 }
 
+
+void flush_meta_data_to_flash(lkp_kv_cfg *config)
+{
+	uint64_t total_pages = mapper_pages + bitmap_pages + 1;
+	uint32_t block_count;
+	uint8_t *byte_mapper = (uint8_t *)mapper;
+	size_t i = 0;
+	size_t j = 0;
+
+	if (total_pages % config->pages_per_block)
+		block_count = total_pages / config->pages_per_block + 1;
+	else
+		block_count = total_pages / config->pages_per_block;
+
+	if (erase_block(0, block_count, config)) {
+		printk("Erasing the block device failed while flushing\n");
+		return;
+	}
+
+	create_meta_data(config);
+
+	for (i = bitmap_start; i <= bitmap_pages ; i++) {
+		if (write_page(i, bitmap + (j) * config->page_size,
+			      config) != 0) {
+			printk(PRINT_PREF "Write for %lu page failed\n", i);
+		}
+		j++;
+	}
+
+	for (i = mapper_start; i <= mapper_pages ; i++) {
+		if (write_page(i, byte_mapper + (j) * config->page_size,
+			      config) != 0) {
+			printk(PRINT_PREF "Write for %lu page failed\n", i);
+		}
+		j++;
+	}
+}
+
 /**
  * Module exit function
  */
 static void __exit lkp_kv_exit(void)
 {
 	printk(PRINT_PREF "Exiting ... \n");
+
+	flush_meta_data_to_flash(&meta_config);
 
 	device_exit();
 	destroy_config(&meta_config);
@@ -712,7 +753,7 @@ static void metadata_format_callback(struct erase_info *e)
 	up(&meta_config.format_lock);
 }
 
-int erase_block(uint64_t block_index, lkp_kv_cfg *config)
+int erase_block(uint64_t block_index, int block_count, lkp_kv_cfg *config)
 {
 	struct erase_info ei;
 
@@ -720,7 +761,7 @@ int erase_block(uint64_t block_index, lkp_kv_cfg *config)
 	 * erase_info structure passed to the MTD NAND driver */
 
 	ei.mtd = config->mtd;
-	ei.len = ((uint64_t) config->block_size);
+	ei.len = ((uint64_t) config->block_size) * block_count;
 	ei.addr = block_index * config->pages_per_block * config->page_size;
 	/* the erase operation is made aysnchronously and a callback function will
 	 * be executed when the operation is done */

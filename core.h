@@ -52,7 +52,7 @@ int get_existing_mapping(uint64_t vpage, uint64_t *ppage);
 
 int mark_vpage_invalid(uint64_t vpage, uint64_t num_pages);
 
-int erase_block(uint64_t block_index, lkp_kv_cfg *config);
+int erase_block(uint64_t block_index, int block_count, lkp_kv_cfg *config);
 
 int garbage_collection(int threshold);
 
