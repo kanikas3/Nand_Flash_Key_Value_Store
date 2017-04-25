@@ -58,6 +58,16 @@ int garbage_collection(int threshold);
 
 int create_mapping_multipage(uint64_t vpage, uint32_t num_pages);
 
+void cache_clean(void);
+
+void cache_remove(const char *key);
+
+int cache_lookup(const char *key, char *val, uint64_t *vpage, uint32_t *num_pages);
+
+void cache_update (const char *key, const char *val, uint64_t vpage, uint32_t num_pages);
+
+void cache_add (const char *key, const char *val, uint64_t vpage, uint32_t num_pages);
+
 extern lkp_kv_cfg data_config;
 extern uint8_t *page_buffer;
 extern uint64_t total_written_page;

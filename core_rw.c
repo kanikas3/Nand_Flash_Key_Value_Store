@@ -253,6 +253,10 @@ int get_keyval(const char *key, char *val)
 	uint32_t num_pages;
 	uint8_t state;
 
+	if (cache_lookup(key, val, &vpage, &num_pages)) {
+		return 0;
+	}
+
 	vpage = hash(key) % data_config.nb_blocks * data_config.pages_per_block;
 
 	printk(PRINT_PREF "%s vpage %llx key %s\n", __func__, vpage, key);;
@@ -286,6 +290,7 @@ int get_keyval(const char *key, char *val)
 						printk("getting the value failed \n");
 						return -1;
 					}
+					cache_add(key, val, vpage, num_pages);
 					return 0;
 				}
 				printk("strcmp has failed\n");
@@ -324,14 +329,25 @@ int set_keyval(const char *key, const char *val)
 		}
 	}
 
-	vpage = hash(key) % data_config.nb_blocks * data_config.pages_per_block;
+	if (cache_lookup(key, NULL, &vpage, &num_pages)) {
 
-	printk(PRINT_PREF "%s vpage %llx key %s val %s\n", __func__, vpage, key, val);
+		printk("Lookup failed\n");
 
-	ret = get_key_page(key, vpage, &lpage, &num_pages);
+		vpage = hash(key) % data_config.nb_blocks * data_config.pages_per_block;
 
-	if (ret != -1) {
-		if (mark_vpage_invalid(lpage, num_pages)) {
+		printk(PRINT_PREF "%s vpage %llx key %s val %s\n", __func__, vpage, key, val);
+
+		ret = get_key_page(key, vpage, &lpage, &num_pages);
+
+		if (ret != -1) {
+			if (mark_vpage_invalid(lpage, num_pages)) {
+				printk(PRINT_PREF "Tried to mark %llu vpage\n", lpage);
+				return -1;
+			}
+		}
+	} else {
+		printk("Lookup passed\n");
+		if (mark_vpage_invalid(vpage, num_pages)) {
 			printk(PRINT_PREF "Tried to mark %llu vpage\n", lpage);
 			return -1;
 		}
@@ -348,7 +364,7 @@ int set_keyval(const char *key, const char *val)
 		num_pages = (12 + key_len + val_len) /
 			(data_config.page_size - 4) + 1;
 
-	printk("Number of page is %d val_len %d key %d\n", num_pages, val_len, key_len);
+	printk("Number of page is %d val_len %d key %d vpage %llx\n", num_pages, val_len, key_len, vpage);
 
 	while (counter <= data_config.nb_blocks * data_config.pages_per_block) {
 
@@ -358,6 +374,8 @@ int set_keyval(const char *key, const char *val)
 
 			ret = create_mapping_multipage(vpage, num_pages);
 			if (ret == 0) {
+
+				cache_update(key, val, vpage, num_pages);
 
 				get_existing_mapping(vpage, &ppage);
 
@@ -388,7 +406,7 @@ int set_keyval(const char *key, const char *val)
 
 					if (ret) {
 						printk(PRINT_PREF "Writing page %llu failed", ppage);
-						return ret;
+						goto fail;
 					}
 					printk(PRINT_PREF "Page %llx written successfully\n", ppage);
 					return ret;
@@ -403,7 +421,7 @@ int set_keyval(const char *key, const char *val)
 
 					if (ret) {
 						printk(PRINT_PREF "Writing page %llu failed", ppage);
-						return ret;
+						goto fail;
 					}
 
 					val_len = val_len - (data_config.page_size - (16 + key_len));
@@ -415,6 +433,7 @@ int set_keyval(const char *key, const char *val)
 
 					if (ret) {
 						printk(PRINT_PREF "Updating the data on flash failed\n");
+						goto fail;
 					}
 
 					return ret;
@@ -426,7 +445,7 @@ int set_keyval(const char *key, const char *val)
 
 					if (ret) {
 						printk(PRINT_PREF "Writing page %llu failed", ppage);
-						return ret;
+						goto fail;
 					}
 					printk(PRINT_PREF "Page %llx written successfully\n", ppage);
 
@@ -441,7 +460,7 @@ int set_keyval(const char *key, const char *val)
 
 					if (ret) {
 						printk(PRINT_PREF "Updating the key data on flash failed\n");
-						return ret;
+						goto fail;
 					}
 
 					key_count += key_max_write;
@@ -474,7 +493,7 @@ int set_keyval(const char *key, const char *val)
 
 						if (ret) {
 							printk(PRINT_PREF "Writing page %llu failed", ppage);
-							return ret;
+							goto fail;
 						}
 					}
 
@@ -483,7 +502,7 @@ int set_keyval(const char *key, const char *val)
 
 						if (ret) {
 							printk(PRINT_PREF "Updating the val data on flash failed\n");
-							return ret;
+							goto fail;
 						}
 					}
 
@@ -492,7 +511,7 @@ int set_keyval(const char *key, const char *val)
 				return ret;
 			} else if (ret == -ENOMEM) {
 				printk(PRINT_PREF "No memory to perform mapping \n");
-				return ret;
+				goto fail;
 			}
 		}
 
@@ -501,6 +520,8 @@ int set_keyval(const char *key, const char *val)
 	}
 
 	printk("Set key failed as no space was found\n");
+fail:
+	cache_remove(key);
 	return -1;
 }
 
@@ -519,15 +540,23 @@ int del_keyval(const char *key)
 		}
 	}
 
-	vpage = hash(key) % data_config.nb_blocks * data_config.pages_per_block;
+	if (cache_lookup(key, NULL, &vpage, &num_pages)) {
+		vpage = hash(key) % data_config.nb_blocks * data_config.pages_per_block;
 
-	ret = get_key_page(key, vpage, &lpage, &num_pages);
+		ret = get_key_page(key, vpage, &lpage, &num_pages);
 
-	if (ret != -1) {
-		if (mark_vpage_invalid(lpage, num_pages)) {
-			printk(PRINT_PREF "Tried to mark %llu \n", lpage);
+		if (ret != -1) {
+			if (mark_vpage_invalid(lpage, num_pages)) {
+				printk(PRINT_PREF "Tried to mark %llu \n", lpage);
+				return -1;
+			}
+	} else {
+		if (mark_vpage_invalid(vpage, num_pages)) {
+			printk(PRINT_PREF "Tried to mark %llu \n", vpage);
 			return -1;
 		}
+		cache_remove(key);
+	}
 /*
 		if (garbage_collection(32)) {
 			printk("Garbage collection failed\n");

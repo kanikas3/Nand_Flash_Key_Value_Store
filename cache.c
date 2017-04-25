@@ -176,15 +176,17 @@ void cache_update (const char *key, const char *val, uint64_t vpage, uint32_t nu
 }
 
 
-int cache_lookup(const char *key, char *val, uint64_t *vpage, uint64_t *num_pages)
+int cache_lookup(const char *key, char *val, uint64_t *vpage, uint32_t *num_pages)
 {
 	struct cached_node *node = index_get(key);
 
+		printk("Node was %p \n", node);
 	if (!node) {
 		return -1;
 	}
 
-	strcpy(val, node->val);
+	if (val)
+		strcpy(val, node->val);
 
 	*vpage = node->vpage;
 	*num_pages = node->num_pages;

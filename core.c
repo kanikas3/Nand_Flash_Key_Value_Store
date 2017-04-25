@@ -592,7 +592,10 @@ static void __exit lkp_kv_exit(void)
 
 	flush_meta_data_to_flash(&meta_config);
 
+	cache_clean();
+
 	device_exit();
+
 	destroy_config(&meta_config);
 	destroy_config(&data_config);
 
