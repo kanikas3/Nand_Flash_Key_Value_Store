@@ -550,6 +550,7 @@ int del_keyval(const char *key)
 				printk(PRINT_PREF "Tried to mark %llu \n", lpage);
 				return -1;
 			}
+		}
 	} else {
 		if (mark_vpage_invalid(vpage, num_pages)) {
 			printk(PRINT_PREF "Tried to mark %llu \n", vpage);
@@ -572,8 +573,6 @@ int del_keyval(const char *key)
 			}
 			*/
 		return 0;
-	}
-
 	printk(PRINT_PREF "Could not find key %s\n", key);
 
 	return -1;

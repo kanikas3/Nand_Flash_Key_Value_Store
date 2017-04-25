@@ -362,7 +362,7 @@ int garbage_collection(int threshold)
 					return -1;
 				}
 
-				if (erase_block(block_counter, 1, &data_config)) {
+				if (erase_block(block_counter, 1, &data_config, data_format_callback)) {
 				
 					printk(PRINT_PREF "erase block %llu for garbage collection failed \n", block_counter);
 					return -1;
@@ -559,7 +559,7 @@ void flush_meta_data_to_flash(lkp_kv_cfg *config)
 	else
 		block_count = total_pages / config->pages_per_block;
 
-	if (erase_block(0, block_count, config)) {
+	if (erase_block(0, block_count, config, metadata_format_callback)) {
 		printk("Erasing the block device failed while flushing\n");
 		return;
 	}
@@ -574,6 +574,7 @@ void flush_meta_data_to_flash(lkp_kv_cfg *config)
 		j++;
 	}
 
+	j = 0;
 	for (i = mapper_start; i <= mapper_pages ; i++) {
 		if (write_page(i, byte_mapper + (j) * config->page_size,
 			      config) != 0) {
@@ -769,7 +770,7 @@ static void metadata_format_callback(struct erase_info *e)
 	up(&meta_config.format_lock);
 }
 
-int erase_block(uint64_t block_index, int block_count, lkp_kv_cfg *config)
+int erase_block(uint64_t block_index, int block_count, lkp_kv_cfg *config, void (*callback)(struct erase_info *e))
 {
 	struct erase_info ei;
 
@@ -781,7 +782,7 @@ int erase_block(uint64_t block_index, int block_count, lkp_kv_cfg *config)
 	ei.addr = block_index * config->pages_per_block * config->page_size;
 	/* the erase operation is made aysnchronously and a callback function will
 	 * be executed when the operation is done */
-	ei.callback = data_format_callback;
+	ei.callback = callback;
 
 	config->format_done = 0;
 
@@ -910,6 +911,8 @@ int format(void)
 		printk(PRINT_PREF "Constructing metadata failed\n");
 		return ret;
 	}
+
+	cache_clean();
 
 	return ret;
 }
