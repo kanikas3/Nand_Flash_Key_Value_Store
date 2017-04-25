@@ -1,5 +1,5 @@
 obj-m += prototype.o
-prototype-objs := core_rw.o core.o device.o
+prototype-objs := cache.o core_rw.o core.o device.o
 
 # Kernel source root directory :
 KERN_DIR=/home/zxcve/Project6/VM/linux-4.0.9
