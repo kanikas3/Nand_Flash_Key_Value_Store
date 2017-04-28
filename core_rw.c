@@ -257,7 +257,7 @@ int get_keyval(const char *key, char *val)
 		return 0;
 	}
 
-	vpage = hash(key) % data_config.nb_blocks * data_config.pages_per_block;
+	vpage = hash(key) % (data_config.nb_blocks * data_config.pages_per_block);
 
 	printk(PRINT_PREF "%s vpage %llx key %s\n", __func__, vpage, key);;
 
@@ -329,11 +329,11 @@ int set_keyval(const char *key, const char *val)
 		}
 	}
 
-	if (cache_lookup(key, NULL, &vpage, &num_pages)) {
+	if (!cache_lookup(key, NULL, &vpage, &num_pages)) {
 
 		printk("Lookup failed\n");
 
-		vpage = hash(key) % data_config.nb_blocks * data_config.pages_per_block;
+		vpage = hash(key) % (data_config.nb_blocks * data_config.pages_per_block);
 
 		printk(PRINT_PREF "%s vpage %llx key %s val %s\n", __func__, vpage, key, val);
 
@@ -515,8 +515,8 @@ int set_keyval(const char *key, const char *val)
 			}
 		}
 
-		vpage += num_pages;
-		counter+= num_pages;
+		vpage++;
+		counter++;
 	}
 
 	printk("Set key failed as no space was found\n");
@@ -540,8 +540,8 @@ int del_keyval(const char *key)
 		}
 	}
 
-	if (cache_lookup(key, NULL, &vpage, &num_pages)) {
-		vpage = hash(key) % data_config.nb_blocks * data_config.pages_per_block;
+	if (!cache_lookup(key, NULL, &vpage, &num_pages)) {
+		vpage = hash(key) % (data_config.nb_blocks * data_config.pages_per_block);
 
 		ret = get_key_page(key, vpage, &lpage, &num_pages);
 

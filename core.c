@@ -91,12 +91,9 @@ static int construct_meta_data(lkp_kv_cfg *meta_config,
 	uint64_t bitmap_size = data_config->nb_blocks *
 					data_config->pages_per_block;
 	uint64_t bitmap_bytes;
-	uint64_t bitmap_pages;
 
 	uint64_t mapper_bytes = data_config->nb_blocks *
 					data_config->pages_per_block * sizeof(uint64_t);
-	uint64_t mapper_pages;
-
 	size_t i;
 	size_t j = 0;
 
@@ -141,7 +138,7 @@ static int construct_meta_data(lkp_kv_cfg *meta_config,
 		return -1;
 	}
 
-	for (i = bitmap_start; i <= bitmap_pages ; i++) {
+	for (i = bitmap_start; i < bitmap_start + bitmap_pages ; i++) {
 		if (read_disk) {
 			if (read_page(i, bitmap + (j) * meta_config->page_size,
 				      meta_config) != 0) {
@@ -180,7 +177,7 @@ static int construct_meta_data(lkp_kv_cfg *meta_config,
 
 	j = 0;
 
-	for (i = mapper_start; i <= mapper_pages ; i++) {
+	for (i = mapper_start; i < mapper_start + mapper_pages ; i++) {
 		if (read_disk) {
 			if (read_page(i, byte_mapper + (j) *
 				      meta_config->page_size,
@@ -196,6 +193,8 @@ static int construct_meta_data(lkp_kv_cfg *meta_config,
 		}
 	}
 
+	printk(PRINT_PREF "Mapper construct %llx\n", mapper[0xa97f]);
+	printk(PRINT_PREF "Mapper construct %llx\n", mapper[0xa980]);
 	fix_free_page_pointer(0);
 
 
@@ -549,7 +548,7 @@ int mark_vpage_invalid(uint64_t vpage, uint64_t num_pages)
 void flush_meta_data_to_flash(lkp_kv_cfg *config)
 {
 	uint64_t total_pages = mapper_pages + bitmap_pages + 1;
-	uint32_t block_count;
+	uint64_t block_count;
 	uint8_t *byte_mapper = (uint8_t *)mapper;
 	size_t i = 0;
 	size_t j = 0;
@@ -559,6 +558,8 @@ void flush_meta_data_to_flash(lkp_kv_cfg *config)
 	else
 		block_count = total_pages / config->pages_per_block;
 
+	printk("Erasing block %llx total_page %llx mapperPages %llu bitmap %llu \n", block_count, total_pages, mapper_pages, bitmap_pages);
+
 	if (erase_block(0, block_count, config, metadata_format_callback)) {
 		printk("Erasing the block device failed while flushing\n");
 		return;
@@ -566,7 +567,7 @@ void flush_meta_data_to_flash(lkp_kv_cfg *config)
 
 	create_meta_data(config);
 
-	for (i = bitmap_start; i <= bitmap_pages ; i++) {
+	for (i = bitmap_start; i < bitmap_start + bitmap_pages ; i++) {
 		if (write_page(i, bitmap + (j) * config->page_size,
 			      config) != 0) {
 			printk(PRINT_PREF "Write for %lu page failed\n", i);
@@ -575,8 +576,18 @@ void flush_meta_data_to_flash(lkp_kv_cfg *config)
 	}
 
 	j = 0;
-	for (i = mapper_start; i <= mapper_pages ; i++) {
+
+	for (i = mapper_start; i < mapper_start + mapper_pages ; i++) {
 		if (write_page(i, byte_mapper + (j) * config->page_size,
+			      config) != 0) {
+			printk(PRINT_PREF "Write for %lu page failed\n", i);
+		}
+		j++;
+	}
+	j = 0;
+
+	for (i = mapper_start; i < mapper_start + mapper_pages ; i++) {
+		if (read_page(i, byte_mapper + (j) * config->page_size,
 			      config) != 0) {
 			printk(PRINT_PREF "Write for %lu page failed\n", i);
 		}

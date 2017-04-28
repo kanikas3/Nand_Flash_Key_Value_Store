@@ -182,7 +182,7 @@ int cache_lookup(const char *key, char *val, uint64_t *vpage, uint32_t *num_page
 
 		printk("Node was %p \n", node);
 	if (!node) {
-		return -1;
+		return 0;
 	}
 
 	if (val)
@@ -191,7 +191,7 @@ int cache_lookup(const char *key, char *val, uint64_t *vpage, uint32_t *num_page
 	*vpage = node->vpage;
 	*num_pages = node->num_pages;
 
-	return 0;
+	return 1;
 }
 
 void cache_remove(const char *key)
