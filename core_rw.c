@@ -5,7 +5,6 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/mtd/mtd.h>
-#include <linux/vmalloc.h>
 #include <linux/string.h>
 
 #include "core.h"

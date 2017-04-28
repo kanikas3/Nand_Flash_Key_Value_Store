@@ -5,7 +5,7 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/mtd/mtd.h>
-#include <linux/vmalloc.h>
+#include <linux/slab.h>
 #include <linux/string.h>
 
 #include "core.h"
@@ -66,7 +66,7 @@ static int __init lkp_kv_init(void)
 		return -1;
 	}
 
-	page_buffer = (uint8_t *)vmalloc(data_config.page_size);
+	page_buffer = (uint8_t *)kmalloc(data_config.page_size, GFP_KERNEL);
 
 	if (page_buffer == NULL) {
 		printk(PRINT_PREF "Page buffer allocation failed\n");
@@ -131,10 +131,10 @@ static int construct_meta_data(lkp_kv_cfg *meta_config,
 		return -1;
 	}
 
-	bitmap = (uint8_t *) vmalloc(bitmap_pages * meta_config->page_size);
+	bitmap = (uint8_t *) kmalloc(bitmap_pages * meta_config->page_size, GFP_KERNEL);
 
 	if (bitmap == NULL) {
-		printk(PRINT_PREF "vmalloc failed for bitmap allocation\n");
+		printk(PRINT_PREF "kmalloc failed for bitmap allocation\n");
 		return -1;
 	}
 
@@ -166,10 +166,10 @@ static int construct_meta_data(lkp_kv_cfg *meta_config,
 		return -1;
 	}
 
-	mapper = (uint64_t *) vmalloc(mapper_pages * meta_config->page_size);
+	mapper = (uint64_t *) kmalloc(mapper_pages * meta_config->page_size, GFP_KERNEL);
 
 	if (mapper == NULL) {
-		printk(PRINT_PREF "vmalloc failed for mapper allocation\n");
+		printk(PRINT_PREF "kmalloc failed for mapper allocation\n");
 		return -1;
 	}
 
@@ -612,13 +612,13 @@ static void __exit lkp_kv_exit(void)
 	destroy_config(&data_config);
 
 	if (page_buffer)
-		vfree(page_buffer);
+		kfree(page_buffer);
 
 	if (bitmap)
-		vfree(bitmap);
+		kfree(bitmap);
 
 	if (mapper)
-		vfree(mapper);
+		kfree(mapper);
 }
 
 /**
