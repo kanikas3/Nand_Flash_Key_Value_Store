@@ -25,7 +25,7 @@ uint64_t bitmap_pages;
 uint64_t mapper_start;
 uint64_t mapper_pages;
 
-uint64_t current_free_page;
+uint64_t current_free_page = 0xF;
 
 uint64_t total_written_page = 0;
 
@@ -209,17 +209,27 @@ static int construct_meta_data(lkp_kv_cfg *meta_config,
 void fix_free_page_pointer(int ppage)
 {
 	uint64_t i = 0;
-	uint64_t offset = ppage / 4;
-	int index = ppage % 4;
+	uint64_t offset;
+	int index;
 	uint8_t status;
 	uint64_t num_pages = data_config.nb_blocks *
 		data_config.pages_per_block;
+
+	printk("Free pages are %llu \n", num_pages);
+
+	if (ppage >= num_pages)
+		ppage = 0;
+
+	offset = ppage / 4;
+	index = ppage % 4;
 
 	while (i < num_pages) {
 
 		status = (bitmap[offset] >> (index * 2)) & 0x3;
 
 		if (status == PAGE_FREE) {
+			if (offset * 4 + index == current_free_page)
+				break;
 			current_free_page = offset * 4 + index;
 			return;
 		}
@@ -265,11 +275,13 @@ int migrate(uint64_t block_counter)
 						return ret;
 					}
 
+					total_written_page--;
 					printk("vpage was %llu\n", i);
 					break;
 				}
 			}
 
+			printk("Moving page %llu to page %llu\n", ppage, npage);
 			ret = read_page(ppage, page_buffer, &data_config);
 
 			if (ret < 0) {
@@ -284,26 +296,12 @@ int migrate(uint64_t block_counter)
 				return ret;
 			}
 
+			mapper[i] = npage;
+
 			bitmap[offset] = (bitmap[offset] &
 					  ~(0x3 << index * 2)) |
-				(PAGE_FREE << index * 2);
-			printk("Moving page %llu to page %llu\n", ppage, npage);
+				(PAGE_INVALID << index * 2);
 
-		} else if (status == PAGE_INVALID) {
-			bitmap[offset] = (bitmap[offset] &
-					  ~(0x3 << index * 2)) |
-				(PAGE_FREE << index * 2);
-
-			for (i = 0; i < data_config.nb_blocks *
-					data_config.pages_per_block; i++) {
-				if (mapper[i] == ppage) {
-					mapper[i] = PAGE_GARBAGE_RECLAIMED;
-					break;
-					printk("Reclaiming %llu\n", i);
-				}
-			}
-
-			total_written_page--;
 		}
 
 		index++;
@@ -328,11 +326,13 @@ int garbage_collection(int threshold)
 	uint8_t status;
 	uint64_t num_pages = data_config.nb_blocks *
 		data_config.pages_per_block;
-	uint64_t invalid_page_counter = 0;
-	uint64_t page_per_block_counter = 0;
+	int invalid_page_counter = 0;
+	int page_per_block_counter = 0;
 	uint64_t block_counter = 0;
 	int ret;
+	uint64_t ppage,j,k;
 
+	printk("STARTED GARBAGE COLLECTION\n");
 	while (i < num_pages) {
 
 		status = (bitmap[offset] >> (index * 2)) & 0x3;
@@ -351,6 +351,7 @@ int garbage_collection(int threshold)
 
 		if (page_per_block_counter == data_config.pages_per_block) {
 
+			printk("Garbage counter %d threshold %d \n", invalid_page_counter, data_config.pages_per_block / threshold);
 			if (invalid_page_counter >= data_config.pages_per_block
 								/ threshold) {
 				printk("Migration %llu \n", block_counter);
@@ -366,6 +367,33 @@ int garbage_collection(int threshold)
 					printk(PRINT_PREF "erase block %llu for garbage collection failed \n", block_counter);
 					return -1;
 				}
+
+				ppage = block_counter * data_config.pages_per_block;
+
+				for (k = ppage; k < ppage + data_config.pages_per_block; k++) {
+
+					offset = k / 4;
+					index = k % 4;
+
+					status = (bitmap[offset] >> (index * 2)) & 0x3;
+
+					bitmap[offset] = (bitmap[offset] &
+							  ~(0x3 << index * 2)) |
+						(PAGE_FREE << index * 2);
+
+					if (status == PAGE_INVALID) {
+						for (j = 0; j < data_config.nb_blocks *
+						     data_config.pages_per_block; j++) {
+							if (mapper[j] == k) {
+								mapper[j] = PAGE_GARBAGE_RECLAIMED;
+								total_written_page--;
+								break;
+								printk("Reclaiming %llu\n", i);
+							}
+						}
+					}
+				}
+
 			}
 			block_counter++;
 			page_per_block_counter = 0;
@@ -399,6 +427,10 @@ int create_mapping_new_block(uint64_t vpage, uint64_t *ppage,
 	uint64_t offset = *ppage / 4;
 	int index = *ppage % 4;
 
+	if (ret != 0) {
+		printk(PRINT_PREF "could not create mapping due to no free page\n");
+		return ret;
+	}
 
 	while (*ppage >= blk_number * data_config.pages_per_block && *ppage <
 	       (blk_number + 1) * data_config.pages_per_block) {
@@ -730,10 +762,6 @@ int write_page(int page_index, const char *buf, lkp_kv_cfg *config)
 	uint64_t addr;
 	size_t retlen;
 
-	/* if the flash partition is full, dont write */
-	if (config->read_only)
-		return -1;
-
 	/* compute the flash target address in bytes */
 	addr = ((uint64_t) page_index) * ((uint64_t) config->page_size);
 
@@ -908,6 +936,8 @@ int format(void)
 		printk(PRINT_PREF "Format meta-data partition failed\n");
 		return ret;
 	}
+
+	total_written_page = 0;
 
 	ret = create_meta_data(&meta_config);
 
