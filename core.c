@@ -25,7 +25,7 @@ uint64_t bitmap_pages;
 uint64_t mapper_start;
 uint64_t mapper_pages;
 
-uint64_t current_free_page = 0xF;
+uint64_t current_free_page = 0x7FFFFFFFF;
 
 uint64_t total_written_page = 0;
 
@@ -42,7 +42,7 @@ static void destroy_config(lkp_kv_cfg *config);
 static int construct_meta_data(lkp_kv_cfg *meta_config,
 			       lkp_kv_cfg *data_config,
 				bool read_disk);
-void fix_free_page_pointer(int ppage);
+void fix_free_page_pointer(uint64_t ppage);
 
 int migrate(uint64_t block_counter);
 
@@ -206,7 +206,7 @@ static int construct_meta_data(lkp_kv_cfg *meta_config,
 	return 0;
 }
 
-void fix_free_page_pointer(int ppage)
+void fix_free_page_pointer(uint64_t ppage)
 {
 	uint64_t i = 0;
 	uint64_t offset;
@@ -214,8 +214,6 @@ void fix_free_page_pointer(int ppage)
 	uint8_t status;
 	uint64_t num_pages = data_config.nb_blocks *
 		data_config.pages_per_block;
-
-	printk("Free pages are %llu \n", num_pages);
 
 	if (ppage >= num_pages)
 		ppage = 0;
@@ -228,7 +226,7 @@ void fix_free_page_pointer(int ppage)
 		status = (bitmap[offset] >> (index * 2)) & 0x3;
 
 		if (status == PAGE_FREE) {
-			if (offset * 4 + index == current_free_page)
+			if (offset * 4 + index == current_free_page && current_free_page)
 				break;
 			current_free_page = offset * 4 + index;
 			return;
@@ -243,7 +241,6 @@ void fix_free_page_pointer(int ppage)
 		}
 		i++;
 	}
-
 	data_config.read_only = 1;
 }
 
@@ -413,7 +410,6 @@ int get_free_page(uint64_t *ppage)
 
 	*ppage = current_free_page;
 
-
 	fix_free_page_pointer(current_free_page+1);
 
 	return 0;
@@ -527,7 +523,7 @@ int get_existing_mapping(uint64_t vpage, uint64_t *ppage)
 
 	*ppage = mapper[vpage];
 
-	printk(PRINT_PREF "%s ppage %llx vpage %llx \n", __func__, *ppage, vpage);
+//	printk(PRINT_PREF "%s ppage %llx vpage %llx \n", __func__, *ppage, vpage);
 
 	if (*ppage == PAGE_UNALLOCATED)
 		return PAGE_NOT_MAPPED;
@@ -540,8 +536,8 @@ int get_existing_mapping(uint64_t vpage, uint64_t *ppage)
 
 	state = (bitmap[offset] >> (index * 2)) & 0x3;
 
-	printk(PRINT_PREF "%s offset %llu index %d state %d \n",
-	       __func__, offset, index, state);
+//	printk(PRINT_PREF "%s offset %llu index %d state %d \n",
+//	       __func__, offset, index, state);
 
 	return state;
 }
@@ -570,7 +566,7 @@ int mark_vpage_invalid(uint64_t vpage, uint64_t num_pages)
 		bitmap[offset] = (bitmap[offset] & ~(0x3 << index * 2)) |
 			(PAGE_INVALID << index * 2);
 
-		printk(PRINT_PREF "%s offset %llu index %d ppage %llu vpage %llu bitmap %x \n", __func__, offset, index, ppage, vpage, bitmap[offset]);
+		printk(PRINT_PREF "%s offset %llu index %d ppage %llx vpage %llx bitmap %x \n", __func__, offset, index, ppage, vpage, bitmap[offset]);
 	}
 
 	return 0;

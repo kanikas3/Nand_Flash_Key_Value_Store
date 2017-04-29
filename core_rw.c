@@ -221,7 +221,7 @@ int get_key_page(const char *key, uint64_t vpage,
 
 				if (marker & NEW_KEY) {
 					*num_pages = *((uint32_t *)(page_buffer + 4));
-					key_len = *((uint32_t *)(page_buffer + 8));
+					key_len = strlen(key);
 					val_len = *((uint32_t *)(page_buffer + 12));
 
 					if (find_key(key, *num_pages, key_len, val_len, vpage)) {
@@ -280,15 +280,17 @@ int get_keyval(const char *key, char *val)
 			printk("marker is %x\n", marker);
 
 			if (marker & NEW_KEY) {
-				key_len = *((uint32_t *)(page_buffer + 8));
+				key_len = strlen(key);
 				val_len = *((uint32_t *)(page_buffer + 12));
 				num_pages = *((uint32_t *)(page_buffer + 4));
+
 
 				if (find_key(key, num_pages, key_len, val_len, vpage)) {
 					if (get_value(val, key_len, val_len, num_pages, vpage) == false) {
 						printk("getting the value failed \n");
 						return -1;
 					}
+					printk("GET_KEY: %d key_len %d val_len %s key, %s val\n", key_len, val_len, key, val);
 					cache_add(key, val, vpage, num_pages);
 					return 0;
 				}
@@ -356,6 +358,7 @@ int set_keyval(const char *key, const char *val)
 
 	val_len = strlen(val);
 
+	printk("SET_KEY: %d key_len %d val_len %s key, %s val\n", key_len, val_len, key, val);
 	if ((12 + key_len + val_len) % (data_config.page_size - 4) == 0)
 		num_pages = (12 + key_len + val_len) /
 			(data_config.page_size - 4);
@@ -549,6 +552,7 @@ int del_keyval(const char *key)
 				printk(PRINT_PREF "Tried to mark %llu \n", lpage);
 				return -1;
 			}
+			return 0;
 		}
 	} else {
 		if (mark_vpage_invalid(vpage, num_pages)) {
@@ -556,22 +560,8 @@ int del_keyval(const char *key)
 			return -1;
 		}
 		cache_remove(key);
-	}
-/*
-		if (garbage_collection(32)) {
-			printk("Garbage collection failed\n");
-		}
-
-			if (read_page(5, page_buffer, &data_config) == 0) {
-				lpage = *((uint64_t *) page_buffer);
-				printk("Lpage was %llx\n", lpage);
-			}
-			if (read_page(2, page_buffer, &data_config) == 0) {
-				lpage = *((uint64_t *) page_buffer);
-				printk("Lpage was %llx\n", lpage);
-			}
-			*/
 		return 0;
+	}
 	printk(PRINT_PREF "Could not find key %s\n", key);
 
 	return -1;
