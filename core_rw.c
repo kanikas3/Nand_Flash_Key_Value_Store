@@ -323,7 +323,7 @@ int set_keyval(const char *key, const char *val)
 	uint32_t size;
 
 	if (total_written_page >
-	    3 * (data_config.nb_blocks * data_config.pages_per_block) / 4) {
+	    1 * (data_config.nb_blocks * data_config.pages_per_block) / 4) {
 
 		if (garbage_collection(2)) {
 			printk(PRINT_PREF "garbage collection has failed\n");
@@ -535,7 +535,7 @@ int del_keyval(const char *key)
 	uint32_t num_pages = 0;
 
 	if (total_written_page >
-	    3 * (data_config.nb_blocks * data_config.pages_per_block) / 4) {
+	    1 * (data_config.nb_blocks * data_config.pages_per_block) / 4) {
 
 		if (garbage_collection(2)) {
 			printk(PRINT_PREF "garbage collection has failed\n");

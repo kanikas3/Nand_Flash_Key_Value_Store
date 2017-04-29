@@ -7,6 +7,7 @@
 #include <linux/mtd/mtd.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <linux/jiffies.h>
 
 #include "core.h"
 #include "device.h"
@@ -28,6 +29,8 @@ uint64_t mapper_pages;
 uint64_t current_free_page = 0x7FFFFFFFF;
 
 uint64_t total_written_page = 0;
+
+unsigned long old_jiffies = 0;
 
 static int init_config(int mtd_index, lkp_kv_cfg *config);
 static void print_config(lkp_kv_cfg *config);
@@ -328,7 +331,14 @@ int garbage_collection(int threshold)
 	uint64_t block_counter = 0;
 	int ret;
 	uint64_t ppage,j,k;
-
+/*
+	if (old_jiffies == 0)
+		old_jiffies = jiffies;
+	else if (time_before(jiffies, old_jiffies + 1 * HZ / 3))
+		return 0;
+	else
+		old_jiffies = jiffies;
+*/
 	printk("STARTED GARBAGE COLLECTION\n");
 	while (i < num_pages) {
 
