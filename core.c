@@ -26,8 +26,6 @@ uint64_t bitmap_pages;
 uint64_t mapper_start;
 uint64_t mapper_pages;
 
-uint64_t current_free_page = 0x7FFFFFFFF;
-
 uint64_t total_written_page = 0;
 
 unsigned long old_jiffies = 0;
@@ -37,7 +35,6 @@ static void print_config(lkp_kv_cfg *config);
 static void print_config(lkp_kv_cfg *config);
 int read_page(int page_index, char *buf, lkp_kv_cfg *config);
 int write_page(int page_index, const char *buf, lkp_kv_cfg *config);
-static void data_format_callback(struct erase_info *e);
 static void metadata_format_callback(struct erase_info *e);
 static int format_config(lkp_kv_cfg *config,
 			 void (*callback)(struct erase_info *e));
@@ -45,11 +42,6 @@ static void destroy_config(lkp_kv_cfg *config);
 static int construct_meta_data(lkp_kv_cfg *meta_config,
 			       lkp_kv_cfg *data_config,
 				bool read_disk);
-void fix_free_page_pointer(uint64_t ppage);
-
-int migrate(uint64_t block_counter);
-
-int get_free_page(uint64_t *ppage);
 
 static int create_meta_data(lkp_kv_cfg *meta_config);
 /**
@@ -196,388 +188,7 @@ static int construct_meta_data(lkp_kv_cfg *meta_config,
 		}
 	}
 
-	printk(PRINT_PREF "Mapper construct %llx\n", mapper[0xa97f]);
-	printk(PRINT_PREF "Mapper construct %llx\n", mapper[0xa980]);
-	fix_free_page_pointer(0);
-
-
-	printk(PRINT_PREF "mapper start %llu \n", mapper_start);
-	printk(PRINT_PREF "mapper end %llu \n", mapper_start + mapper_pages);
-	printk(PRINT_PREF "bitmap end %llu \n", bitmap_start + bitmap_pages);
-	printk(PRINT_PREF "curr pointer %llu \n", current_free_page);
-
-	return 0;
-}
-
-void fix_free_page_pointer(uint64_t ppage)
-{
-	uint64_t i = 0;
-	uint64_t offset;
-	int index;
-	uint8_t status;
-	uint64_t num_pages = data_config.nb_blocks *
-		data_config.pages_per_block;
-
-	if (ppage >= num_pages)
-		ppage = 0;
-
-	offset = ppage / 4;
-	index = ppage % 4;
-
-	while (i < num_pages) {
-
-		status = (bitmap[offset] >> (index * 2)) & 0x3;
-
-		if (status == PAGE_FREE) {
-			if (offset * 4 + index == current_free_page && current_free_page)
-				break;
-			current_free_page = offset * 4 + index;
-			return;
-		}
-		index++;
-
-		if (index == 4) {
-			offset++;
-			if (offset == num_pages / 4)
-				offset = 0;
-			index=0;
-		}
-		i++;
-	}
-	data_config.read_only = 1;
-}
-
-int migrate(uint64_t block_counter)
-{
-	int num_pages = data_config.pages_per_block;
-	uint64_t i = 0;
-	int j = 0;
-	uint64_t ppage = block_counter * data_config.pages_per_block;
-	uint64_t offset = ppage / 4;
-	int index =  ppage % 4;
-	uint64_t npage;
-	int ret;
-	uint8_t status;
-
-	while (j < num_pages) {
-		status = (bitmap[offset] >> (index * 2)) & 0x3;
-
-		printk("Status for %u was %d\n", j, status);
-		if (status == PAGE_VALID) {
-
-			for (i = 0; i < data_config.nb_blocks *
-					data_config.pages_per_block; i++) {
-				if (mapper[i] == ppage) {
-					ret = create_mapping_new_block(i, &npage, block_counter);
-
-					if (ret < 0) {
-						printk(PRINT_PREF "Creating mapping for migration failed\n");
-						return ret;
-					}
-
-					total_written_page--;
-					printk("vpage was %llu\n", i);
-					break;
-				}
-			}
-
-			printk("Moving page %llu to page %llu\n", ppage, npage);
-			ret = read_page(ppage, page_buffer, &data_config);
-
-			if (ret < 0) {
-				printk(PRINT_PREF "Reading page for migration failed\n");
-				return ret;
-			}
-
-			ret = write_page(npage, page_buffer, &data_config);
-
-			if (ret < 0) {
-				printk(PRINT_PREF "Writing page for migration failed\n");
-				return ret;
-			}
-
-			mapper[i] = npage;
-
-			bitmap[offset] = (bitmap[offset] &
-					  ~(0x3 << index * 2)) |
-				(PAGE_INVALID << index * 2);
-
-		}
-
-		index++;
-
-		if (index == 4) {
-			offset++;
-			index=0;
-		}
-
-		j++;
-		ppage++;
-	}
-
-	return 0;
-}
-
-int garbage_collection(int threshold)
-{
-	uint64_t i = 0;
-	uint64_t offset = 0;
-	int index = 0;
-	uint8_t status;
-	uint64_t num_pages = data_config.nb_blocks *
-		data_config.pages_per_block;
-	int invalid_page_counter = 0;
-	int page_per_block_counter = 0;
-	uint64_t block_counter = 0;
-	int ret;
-	uint64_t ppage,j,k;
-/*
-	if (old_jiffies == 0)
-		old_jiffies = jiffies;
-	else if (time_before(jiffies, old_jiffies + 1 * HZ / 3))
-		return 0;
-	else
-		old_jiffies = jiffies;
-*/
-	printk("STARTED GARBAGE COLLECTION\n");
-	while (i < num_pages) {
-
-		status = (bitmap[offset] >> (index * 2)) & 0x3;
-
-		if (status == PAGE_INVALID)
-			invalid_page_counter++;
-
-		index++;
-
-		if (index == 4) {
-			offset++;
-			index=0;
-		}
-		i++;
-		page_per_block_counter++;
-
-		if (page_per_block_counter == data_config.pages_per_block) {
-
-			printk("Garbage counter %d threshold %d \n", invalid_page_counter, data_config.pages_per_block / threshold);
-			if (invalid_page_counter >= data_config.pages_per_block
-								/ threshold) {
-				printk("Migration %llu \n", block_counter);
-				ret = migrate(block_counter);
-
-				if (ret) {
-					printk(PRINT_PREF "Migration of block %llu for garbage collection failed \n", block_counter);
-					return -1;
-				}
-
-				if (erase_block(block_counter, 1, &data_config, data_format_callback)) {
-				
-					printk(PRINT_PREF "erase block %llu for garbage collection failed \n", block_counter);
-					return -1;
-				}
-
-				ppage = block_counter * data_config.pages_per_block;
-
-				for (k = ppage; k < ppage + data_config.pages_per_block; k++) {
-
-					offset = k / 4;
-					index = k % 4;
-
-					status = (bitmap[offset] >> (index * 2)) & 0x3;
-
-					bitmap[offset] = (bitmap[offset] &
-							  ~(0x3 << index * 2)) |
-						(PAGE_FREE << index * 2);
-
-					if (status == PAGE_INVALID) {
-						for (j = 0; j < data_config.nb_blocks *
-						     data_config.pages_per_block; j++) {
-							if (mapper[j] == k) {
-								mapper[j] = PAGE_GARBAGE_RECLAIMED;
-								total_written_page--;
-								break;
-								printk("Reclaiming %llu\n", i);
-							}
-						}
-					}
-				}
-
-			}
-			block_counter++;
-			page_per_block_counter = 0;
-			invalid_page_counter = 0;
-		}
-	}
-
-	return 0;
-}
-
-int get_free_page(uint64_t *ppage)
-{
-	if (data_config.read_only) {
-		printk(PRINT_PREF "No free pages to give \n");
-		return -1;
-	}
-
-	*ppage = current_free_page;
-
-	fix_free_page_pointer(current_free_page+1);
-
-	return 0;
-}
-
-
-int create_mapping_new_block(uint64_t vpage, uint64_t *ppage,
-			     uint64_t blk_number)
-{
-	int ret = get_free_page(ppage);
-	uint64_t offset = *ppage / 4;
-	int index = *ppage % 4;
-
-	if (ret != 0) {
-		printk(PRINT_PREF "could not create mapping due to no free page\n");
-		return ret;
-	}
-
-	while (*ppage >= blk_number * data_config.pages_per_block && *ppage <
-	       (blk_number + 1) * data_config.pages_per_block) {
-
-		ret = get_free_page(ppage);
-		if (ret != 0) {
-			printk(PRINT_PREF "could not create mapping due to no free page\n");
-			return ret;
-		}
-
-		offset = *ppage / 4;
-		index = *ppage % 4;
-	}
-
-	mapper[vpage] = *ppage;
-
-	bitmap[offset] = (bitmap[offset] & ~(0x3 << index * 2)) |
-			(PAGE_VALID << index * 2);
-
-	total_written_page++;
-
-	printk(PRINT_PREF "%s offset %llu index %d ppage %llx vpage %llx bitmap %x \n", __func__, offset, index, *ppage, vpage, bitmap[offset]);
-	return 0;
-}
-
-int create_mapping(uint64_t vpage, uint64_t *ppage)
-{
-	int ret = get_free_page(ppage);
-	uint64_t offset = *ppage / 4;
-	int index = *ppage % 4;
-
-	if (ret != 0) {
-		printk(PRINT_PREF "could not create mapping\n");
-		return ret;
-	}
-
-	mapper[vpage] = *ppage;
-
-	bitmap[offset] = (bitmap[offset] & ~(0x3 << index * 2)) |
-			(PAGE_VALID << index * 2);
-
-	total_written_page++;
-
-	printk(PRINT_PREF "%s offset %llu index %d ppage %llx vpage %llx bitmap %x \n", __func__, offset, index, *ppage, vpage, bitmap[offset]);
-	return 0;
-}
-
-
-int create_mapping_multipage(uint64_t vpage, uint32_t num_pages)
-{
-	uint32_t page = 0;
-	uint64_t lpage = vpage;
-	uint64_t ppage;
-
-	while (page < num_pages) {
-		if (mapper[lpage] != PAGE_UNALLOCATED &&
-		    mapper[lpage] != PAGE_GARBAGE_RECLAIMED) {
-		    	printk("multipage mapping now allowed for %llu \n", lpage);
-			return -1;
-		}
-		lpage++;
-		page++;
-	}
-
-	lpage = vpage;
-	page = 0;
-
-	while (page < num_pages) {
-		if (create_mapping(lpage, &ppage)) {
-		    	printk("mapping failed for %llu \n", lpage);
-			return -ENOMEM;
-		}
-		lpage++;
-		page++;
-	}
-
-	return 0;
-}
-
-
-uint8_t get_ppage_state(uint64_t ppage)
-{
-	uint64_t offset = ppage / 4;
-	int index = ppage % 4;
-
-	return (bitmap[offset] >> (index * 2)) & 0x3;
-}
-
-int get_existing_mapping(uint64_t vpage, uint64_t *ppage)
-{
-	uint64_t offset;
-	int index;
-	uint8_t state;
-
-	*ppage = mapper[vpage];
-
-//	printk(PRINT_PREF "%s ppage %llx vpage %llx \n", __func__, *ppage, vpage);
-
-	if (*ppage == PAGE_UNALLOCATED)
-		return PAGE_NOT_MAPPED;
-
-	if (*ppage == PAGE_GARBAGE_RECLAIMED)
-		return PAGE_RECLAIMED;
-
-	offset = *ppage / 4;
-	index = *ppage % 4;
-
-	state = (bitmap[offset] >> (index * 2)) & 0x3;
-
-//	printk(PRINT_PREF "%s offset %llu index %d state %d \n",
-//	       __func__, offset, index, state);
-
-	return state;
-}
-
-int mark_vpage_invalid(uint64_t vpage, uint64_t num_pages)
-{
-	int state;
-	uint64_t i = 0;
-	uint64_t ppage;
-	uint64_t offset;
-	int index;
-
-	while (i < num_pages) {
-
-		state = get_existing_mapping(vpage + i, &ppage);
-
-		if (state != PAGE_VALID) {
-			printk(PRINT_PREF "Trying to mark a non-valid page as invalid\n");
-			return -1;
-		}
-		i++;
-
-		offset = ppage / 4;
-		index = ppage % 4;
-
-		bitmap[offset] = (bitmap[offset] & ~(0x3 << index * 2)) |
-			(PAGE_INVALID << index * 2);
-
-		printk(PRINT_PREF "%s offset %llu index %d ppage %llx vpage %llx bitmap %x \n", __func__, offset, index, ppage, vpage, bitmap[offset]);
-	}
+	project6_fix_free_page_pointer(0);
 
 	return 0;
 }
@@ -642,7 +253,7 @@ static void __exit lkp_kv_exit(void)
 
 	flush_meta_data_to_flash(&meta_config);
 
-	cache_clean();
+	project6_cache_clean();
 
 	device_exit();
 
@@ -782,7 +393,7 @@ int write_page(int page_index, const char *buf, lkp_kv_cfg *config)
 /**
  * Callback for the erase operation done during the format process
  */
-static void data_format_callback(struct erase_info *e)
+void data_format_callback(struct erase_info *e)
 {
 	if (e->state != MTD_ERASE_DONE) {
 		printk(PRINT_PREF "Format error...");
@@ -860,40 +471,14 @@ int erase_block(uint64_t block_index, int block_count, lkp_kv_cfg *config, void 
 static int format_config(lkp_kv_cfg *config,
 			 void (*callback)(struct erase_info *e))
 {
-	struct erase_info ei;
+	int ret;
 
-	/* erasing one or several flash blocks is made through the use of an
-	 * erase_info structure passed to the MTD NAND driver */
+	ret = erase_block(0, config->nb_blocks, config, callback);
 
-	ei.mtd = config->mtd;
-	ei.len = ((uint64_t) config->block_size) *
-		((uint64_t) config->nb_blocks);
-	ei.addr = 0x0;
-	/* the erase operation is made aysnchronously and a callback function will
-	 * be executed when the operation is done */
-	ei.callback = callback;
-
-	config->format_done = 0;
-
-	/* Call the MTD driver  */
-	if (config->mtd->_erase(config->mtd, &ei) != 0)
-		return -1;
-
-	/* on attend la fin effective de l'operation avec un spinlock.
-	 * C'est la fonction callback qui mettra format_done a 1 */
-	/* TODO change to a condwait here */
-	while (1)
-		if (!down_trylock(&config->format_lock)) {
-			if (config->format_done) {
-				up(&config->format_lock);
-				break;
-			}
-			up(&config->format_lock);
-		}
-
-	/* was there a driver issue related to the erase oepration? */
-	if (config->format_done == -1)
-		return -1;
+	if (ret != 0) {
+		printk(PRINT_PREF "Format failed \n");
+		return ret;
+	}
 
 	config->read_only = 0;
 
@@ -959,7 +544,7 @@ int format(void)
 		return ret;
 	}
 
-	cache_clean();
+	project6_cache_clean();
 
 	return ret;
 }

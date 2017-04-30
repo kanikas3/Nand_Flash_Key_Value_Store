@@ -44,32 +44,40 @@ int format(void);
 int read_page(int page_index, char *buf, lkp_kv_cfg *config);
 int write_page(int page_index, const char *buf, lkp_kv_cfg *config);
 
-int create_mapping(uint64_t vpage, uint64_t *ppage);
+int project6_create_mapping_new_block(uint64_t vpage, uint64_t *ppage, uint64_t block_counter);
 
-int create_mapping_new_block(uint64_t vpage, uint64_t *ppage, uint64_t block_counter);
+int project6_get_existing_mapping(uint64_t vpage, uint64_t *ppage);
 
-int get_existing_mapping(uint64_t vpage, uint64_t *ppage);
-
-int mark_vpage_invalid(uint64_t vpage, uint64_t num_pages);
+int project6_mark_vpage_invalid(uint64_t vpage, uint64_t num_pages);
 
 int erase_block(uint64_t block_index, int block_count, lkp_kv_cfg *config, void (*callback)(struct erase_info *e));
 
-int garbage_collection(int threshold);
+int project6_garbage_collection(int threshold);
 
-int create_mapping_multipage(uint64_t vpage, uint32_t num_pages);
+int project6_create_mapping_multipage(uint64_t vpage, uint32_t num_pages);
 
-void cache_clean(void);
+void project6_cache_clean(void);
 
-void cache_remove(const char *key);
+void project6_cache_remove(const char *key);
 
-int cache_lookup(const char *key, char *val, uint64_t *vpage, uint32_t *num_pages);
+int project6_cache_lookup(const char *key, char *val, uint64_t *vpage, uint32_t *num_pages);
 
-void cache_update (const char *key, const char *val, uint64_t vpage, uint32_t num_pages);
+void project6_cache_update (const char *key, const char *val, uint64_t vpage, uint32_t num_pages);
 
-void cache_add (const char *key, const char *val, uint64_t vpage, uint32_t num_pages);
+void project6_cache_add (const char *key, const char *val, uint64_t vpage, uint32_t num_pages);
+
+void project6_fix_free_page_pointer(uint64_t ppage);
+
+void data_format_callback(struct erase_info *e);
+
+uint8_t project6_get_ppage_state(uint64_t ppage);
+
+void project6_set_ppage_state(uint64_t ppage, uint8_t state);
 
 extern lkp_kv_cfg data_config;
 extern uint8_t *page_buffer;
 extern uint64_t total_written_page;
+extern uint8_t *bitmap;
+extern uint64_t *mapper;
 
 #endif /* LKP_KV_H */

@@ -1,8 +1,8 @@
 obj-m += prototype.o
-prototype-objs := cache.o core_rw.o core.o device.o
+prototype-objs := cache.o garbage_collector.o page_manager.o keyval.o core.o device.o
 
 # Kernel source root directory :
-KERN_DIR=/home/zxcve/Project6/VM/linux-4.0.9
+KERN_DIR=/home/zxcve/workspace/project6/VM/linux-4.0.9
 # Target architecture :
 ARCH=x86_64
 
