@@ -9,6 +9,7 @@
 #include <linux/slab.h>
 #include <linux/list.h>
 #include <linux/hashtable.h>
+#include "cache.h"
 
 /* Enables/Disables the caching */
 #define ENABLE_CACHE 1
@@ -30,33 +31,6 @@ DEFINE_HASHTABLE(kv_index_table, KV_HASH_BITS);
 /* Max elements allowed in the cache */
 uint32_t total_elements = 0;
 
-
-/**
- * @brief Structure of the node in the double link list
- */
-struct cached_node
-{
-    uint64_t vpage;
-
-    uint32_t num_pages;
-
-    char *key;
-
-    char *val;
-
-    struct list_head list;
-};
-
-/**
- * @brief Structure of the node in the hash table
- */
-struct index_item {
-     const char* key;
-
-     struct cached_node *ptr;
-
-     struct hlist_node hlist_elem;
-};
 
 /**
  * @brief Hash function for the string`

@@ -1,19 +1,30 @@
-/**
- * This file contains the prototype core functionalities.
- */
+/*
+ * Set, get and delete key operations
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+*/
+
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/mtd/mtd.h>
 #include <linux/string.h>
-
 #include "core.h"
-#include "device.h"
+#include "cache.h"
 
 #define PRINT_PREF KERN_INFO "[KEY_VAL]: "
-
-#define NEW_KEY 0x20000000
-#define PREVIOUS_KEY 0x10000000
 
 /* Taken from http://www.cse.yorku.ca/~oz/hash.html */
 static uint64_t hash(const char *str)
@@ -91,7 +102,7 @@ static int update_data_flash(uint32_t len, const char *buffer, uint64_t *vpage)
  *
  * @return True if found, False if not found
  */
-bool find_value(char *val, uint32_t key_len,
+static bool find_value(char *val, uint32_t key_len,
 	       uint32_t val_len, uint32_t num_pages, uint64_t vpage)
 {
 	uint64_t lpage = vpage;
@@ -165,7 +176,7 @@ bool find_value(char *val, uint32_t key_len,
  *
  * @return  True if found, False if not found
  */
-bool find_key(const char *key, uint32_t num_pages,
+static bool find_key(const char *key, uint32_t num_pages,
 	      uint32_t key_len, uint64_t vpage)
 {
 	uint64_t pages = 1;
@@ -239,7 +250,7 @@ bool find_key(const char *key, uint32_t num_pages,
  *
  * @return 0 for success, appropriate failure codes
  */
-int get_key_page(const char *key, uint64_t vpage,
+static int get_key_page(const char *key, uint64_t vpage,
 		 uint64_t *ret_page, uint32_t *num_pages)
 {
 	size_t counter = 0;
@@ -286,82 +297,6 @@ int get_key_page(const char *key, uint64_t vpage,
 		counter++;
 	}
 	return -EINVAL;
-}
-
-/**
- * @brief Gets the value for given key
- *
- * @param key Key to be searched
- * @param val Pointer for the value
- *
- * @return 0 for success, -1 for failure
- */
-int get_keyval(const char *key, char *val)
-{
-	uint64_t vpage;
-	uint64_t ppage;
-	size_t counter = 0;
-	uint32_t marker;
-	uint32_t key_len;
-	uint32_t val_len;
-	uint32_t num_pages;
-	uint8_t state;
-	int ret;
-
-	if (project6_cache_lookup(key, val, &vpage, &num_pages)) {
-		printk("GET_KEY: %s key, %s val\n",
-		       key, val);
-		return 0;
-	}
-
-	vpage = hash(key);
-
-	while (counter <= data_config.nb_blocks * data_config.pages_per_block) {
-
-		state = project6_get_existing_mapping(vpage, &ppage);
-
-		if (state == PAGE_NOT_MAPPED) {
-			printk("Get key failed as key was not found\n");
-			return -1;
-		}
-
-		if (state == PAGE_VALID) {
-			ret = read_page(ppage, page_buffer, &data_config);
-			if (ret) {
-				printk("Reading page has failed in get key\n");
-				return -1;
-			}
-
-			marker = *((uint32_t *)page_buffer);
-
-			if (marker & NEW_KEY) {
-				key_len = strlen(key);
-				val_len = *((uint32_t *)(page_buffer + 12));
-				num_pages = *((uint32_t *)(page_buffer + 4));
-
-
-				if (find_key(key, num_pages, key_len,
-					     vpage)) {
-					if (!find_value(val, key_len,
-						val_len, num_pages, vpage)) {
-						printk("Get key failed as key was not found on flash\n");
-						return -1;
-					}
-					printk("GET_KEY: %d key_len %d val_len %s key, %s val\n",
-					       key_len, val_len, key, val);
-					project6_cache_add(key, val, vpage,
-							   num_pages);
-					return 0;
-				}
-			}
-		}
-		vpage = (vpage + 1) % (data_config.nb_blocks *
-				       data_config.pages_per_block);
-		counter++;
-	}
-
-	printk("Get key failed as key was not found\n");
-	return -1;
 }
 
 /**
@@ -673,3 +608,78 @@ int del_keyval(const char *key)
 	return 0;
 }
 
+/**
+ * @brief Gets the value for given key
+ *
+ * @param key Key to be searched
+ * @param val Pointer for the value
+ *
+ * @return 0 for success, -1 for failure
+ */
+int get_keyval(const char *key, char *val)
+{
+	uint64_t vpage;
+	uint64_t ppage;
+	size_t counter = 0;
+	uint32_t marker;
+	uint32_t key_len;
+	uint32_t val_len;
+	uint32_t num_pages;
+	uint8_t state;
+	int ret;
+
+	if (project6_cache_lookup(key, val, &vpage, &num_pages)) {
+		printk("GET_KEY: %s key, %s val\n",
+		       key, val);
+		return 0;
+	}
+
+	vpage = hash(key);
+
+	while (counter <= data_config.nb_blocks * data_config.pages_per_block) {
+
+		state = project6_get_existing_mapping(vpage, &ppage);
+
+		if (state == PAGE_NOT_MAPPED) {
+			printk("Get key failed as key was not found\n");
+			return -1;
+		}
+
+		if (state == PAGE_VALID) {
+			ret = read_page(ppage, page_buffer, &data_config);
+			if (ret) {
+				printk("Reading page has failed in get key\n");
+				return -1;
+			}
+
+			marker = *((uint32_t *)page_buffer);
+
+			if (marker & NEW_KEY) {
+				key_len = strlen(key);
+				val_len = *((uint32_t *)(page_buffer + 12));
+				num_pages = *((uint32_t *)(page_buffer + 4));
+
+
+				if (find_key(key, num_pages, key_len,
+					     vpage)) {
+					if (!find_value(val, key_len,
+						val_len, num_pages, vpage)) {
+						printk("Get key failed as key was not found on flash\n");
+						return -1;
+					}
+					printk("GET_KEY: %d key_len %d val_len %s key, %s val\n",
+					       key_len, val_len, key, val);
+					project6_cache_add(key, val, vpage,
+							   num_pages);
+					return 0;
+				}
+			}
+		}
+		vpage = (vpage + 1) % (data_config.nb_blocks *
+				       data_config.pages_per_block);
+		counter++;
+	}
+
+	printk("Get key failed as key was not found\n");
+	return -1;
+}

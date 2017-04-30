@@ -1,5 +1,5 @@
-obj-m += prototype.o
-prototype-objs := cache.o \
+obj-m += project6.o
+project6-objs := cache.o \
 	garbage_collector.o \
 	page_manager.o \
 	keyval.o \
@@ -20,7 +20,7 @@ all:
 	rm -rf *.o *.mod.c modules.order Module.symvers
 
 install: all
-	scp -r prototype.ko insert_mod.sh  $(TARGET)
+	scp -r project6.ko insert_mod.sh  $(TARGET)
 	
 clean:
 	make -C $(KERN_DIR) M=$(PWD) ARCH=$(ARCH) clean
