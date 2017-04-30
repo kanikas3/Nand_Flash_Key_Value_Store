@@ -236,7 +236,7 @@ int project6_create_mapping_multipage(uint64_t vpage, uint32_t num_pages)
  *
  * @return Appropriate codes based on state of vpage
  */
-int poject6_get_existing_mapping(uint64_t vpage, uint64_t *ppage)
+int project6_get_existing_mapping(uint64_t vpage, uint64_t *ppage)
 {
 	if (vpage >= data_config.nb_blocks * data_config.pages_per_block)
 		return PAGE_NOT_MAPPED;

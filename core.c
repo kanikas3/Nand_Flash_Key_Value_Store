@@ -12,276 +12,64 @@
 #include "core.h"
 #include "device.h"
 
-#define PRINT_PREF KERN_INFO "[LKP_KV]: "
+#define PRINT_PREF KERN_INFO "CORE "
 
-lkp_kv_cfg meta_config;
-lkp_kv_cfg data_config;
+/**
+ * @brief Configuration for meta-data partition
+ */
+project6_cfg meta_config;
+
+
+/**
+ * @brief Configuration for data partition
+ */
+project6_cfg data_config;
+
+/**
+ * @brief Page buffer for writing/reading page
+ */
 uint8_t *page_buffer = NULL;
-uint8_t *bitmap = NULL;
-uint64_t *mapper = NULL;
 
-uint64_t bitmap_start = 0x1;
-uint64_t bitmap_pages;
-
-uint64_t mapper_start;
-uint64_t mapper_pages;
-
-uint64_t total_written_page = 0;
-
-unsigned long old_jiffies = 0;
-
-static int init_config(int mtd_index, lkp_kv_cfg *config);
-static void print_config(lkp_kv_cfg *config);
-static void print_config(lkp_kv_cfg *config);
-int read_page(int page_index, char *buf, lkp_kv_cfg *config);
-int write_page(int page_index, const char *buf, lkp_kv_cfg *config);
-static void metadata_format_callback(struct erase_info *e);
-static int format_config(lkp_kv_cfg *config,
-			 void (*callback)(struct erase_info *e));
-static void destroy_config(lkp_kv_cfg *config);
-static int construct_meta_data(lkp_kv_cfg *meta_config,
-			       lkp_kv_cfg *data_config,
-				bool read_disk);
-
-static int create_meta_data(lkp_kv_cfg *meta_config);
-/**
- * Module initialization function
- */
-static int __init lkp_kv_init(void)
-{
-	printk(PRINT_PREF "Loading... \n");
-
-	if (init_config(0, &meta_config) != 0) {
-		printk(PRINT_PREF "Initialization error\n");
-		return -1;
-	}
-
-	if (init_config(1, &data_config) != 0) {
-		printk(PRINT_PREF "Initialization error\n");
-		return -1;
-	}
-
-	page_buffer = (uint8_t *)kmalloc(data_config.page_size, GFP_KERNEL);
-
-	if (page_buffer == NULL) {
-		printk(PRINT_PREF "Page buffer allocation failed\n");
-		return -ENOMEM;
-	}
-
-	construct_meta_data(&meta_config, &data_config, true);
-
-	if (device_init() != 0) {
-		printk(PRINT_PREF "Virtual device creation error\n");
-		return -1;
-	}
-
-	return 0;
-}
-
-static int construct_meta_data(lkp_kv_cfg *meta_config,
-			       lkp_kv_cfg *data_config,
-				bool read_disk)
-{
-	uint32_t *signature = (uint32_t *)page_buffer;
-	uint64_t bitmap_size = data_config->nb_blocks *
-					data_config->pages_per_block;
-	uint64_t bitmap_bytes;
-
-	uint64_t mapper_bytes = data_config->nb_blocks *
-					data_config->pages_per_block * sizeof(uint64_t);
-	size_t i;
-	size_t j = 0;
-
-	uint8_t *byte_mapper;
-
-	if (read_disk == true) {
-		if (read_page(0, page_buffer, meta_config) != 0) {
-			printk(PRINT_PREF "Read for constructing meta-data failed\n");
-			return -1;
-		}
-
-		if (*signature != 0xdeadbeef) {
-			printk(PRINT_PREF "You must format the flash before usage\n");
-			return -1;
-		}
-
-		total_written_page = *(signature + 4);
-	}
-
-	if (bitmap_size % 4 == 0)
-		bitmap_bytes = bitmap_size / 4;
-	else
-		bitmap_bytes = bitmap_size / 4 + 1;
-
-	if (bitmap_bytes % meta_config->page_size == 0)
-		bitmap_pages = bitmap_bytes / meta_config->page_size;
-	else
-		bitmap_pages = bitmap_bytes / meta_config->page_size + 1;
-
-
-	if (bitmap_start + bitmap_pages > meta_config->nb_blocks *
-					meta_config->pages_per_block) {
-
-		printk(PRINT_PREF " Not enough pages for bitmap in meta partition\n");
-		return -1;
-	}
-
-	bitmap = (uint8_t *) kmalloc(bitmap_pages * meta_config->page_size, GFP_KERNEL);
-
-	if (bitmap == NULL) {
-		printk(PRINT_PREF "kmalloc failed for bitmap allocation\n");
-		return -1;
-	}
-
-	for (i = bitmap_start; i < bitmap_start + bitmap_pages ; i++) {
-		if (read_disk) {
-			if (read_page(i, bitmap + (j) * meta_config->page_size,
-				      meta_config) != 0) {
-				printk(PRINT_PREF "Read for %lu page failed\n", i);
-				return -1;
-			}
-			j++;
-		} else {
-			memset(bitmap, 0xFF,
-			       bitmap_pages * meta_config->page_size);
-		}
-	}
-
-	mapper_start = bitmap_pages + bitmap_start + 1;
-
-	if (mapper_bytes % meta_config->page_size == 0)
-		mapper_pages = mapper_bytes / meta_config->page_size;
-	else
-		mapper_pages = mapper_bytes / meta_config->page_size + 1;
-
-	if (mapper_start + mapper_pages > meta_config->nb_blocks *
-					meta_config->pages_per_block) {
-
-		printk(PRINT_PREF " Not enough pages for mapper in meta partition\n");
-		return -1;
-	}
-
-	mapper = (uint64_t *) kmalloc(mapper_pages * meta_config->page_size, GFP_KERNEL);
-
-	if (mapper == NULL) {
-		printk(PRINT_PREF "kmalloc failed for mapper allocation\n");
-		return -1;
-	}
-
-	byte_mapper = (uint8_t *)mapper;
-
-	j = 0;
-
-	for (i = mapper_start; i < mapper_start + mapper_pages ; i++) {
-		if (read_disk) {
-			if (read_page(i, byte_mapper + (j) *
-				      meta_config->page_size,
-				      meta_config) != 0) {
-				printk(PRINT_PREF "Read for %lu page failed\n",
-				       i);
-				return -1;
-			}
-			j++;
-		} else {
-			memset(byte_mapper, 0xFF,
-			       mapper_pages * meta_config->page_size);
-		}
-	}
-
-	project6_fix_free_page_pointer(0);
-
-	return 0;
-}
-
-
-void flush_meta_data_to_flash(lkp_kv_cfg *config)
-{
-	uint64_t total_pages = mapper_pages + bitmap_pages + 1;
-	uint64_t block_count;
-	uint8_t *byte_mapper = (uint8_t *)mapper;
-	size_t i = 0;
-	size_t j = 0;
-
-	if (total_pages % config->pages_per_block)
-		block_count = total_pages / config->pages_per_block + 1;
-	else
-		block_count = total_pages / config->pages_per_block;
-
-	printk("Erasing block %llx total_page %llx mapperPages %llu bitmap %llu \n", block_count, total_pages, mapper_pages, bitmap_pages);
-
-	if (erase_block(0, block_count, config, metadata_format_callback)) {
-		printk("Erasing the block device failed while flushing\n");
-		return;
-	}
-
-	create_meta_data(config);
-
-	for (i = bitmap_start; i < bitmap_start + bitmap_pages ; i++) {
-		if (write_page(i, bitmap + (j) * config->page_size,
-			      config) != 0) {
-			printk(PRINT_PREF "Write for %lu page failed\n", i);
-		}
-		j++;
-	}
-
-	j = 0;
-
-	for (i = mapper_start; i < mapper_start + mapper_pages ; i++) {
-		if (write_page(i, byte_mapper + (j) * config->page_size,
-			      config) != 0) {
-			printk(PRINT_PREF "Write for %lu page failed\n", i);
-		}
-		j++;
-	}
-	j = 0;
-
-	for (i = mapper_start; i < mapper_start + mapper_pages ; i++) {
-		if (read_page(i, byte_mapper + (j) * config->page_size,
-			      config) != 0) {
-			printk(PRINT_PREF "Write for %lu page failed\n", i);
-		}
-		j++;
-	}
-}
 
 /**
- * Module exit function
+ * @brief Destroys the config
+ *
+ * @param config Pointer to the config
  */
-static void __exit lkp_kv_exit(void)
-{
-	printk(PRINT_PREF "Exiting ... \n");
-
-	flush_meta_data_to_flash(&meta_config);
-
-	project6_cache_clean();
-
-	device_exit();
-
-	destroy_config(&meta_config);
-	destroy_config(&data_config);
-
-	if (page_buffer)
-		kfree(page_buffer);
-
-	if (bitmap)
-		kfree(bitmap);
-
-	if (mapper)
-		kfree(mapper);
-}
-
-/**
- * Freeing stuff on exit
- */
-static void destroy_config(lkp_kv_cfg *config)
+static void destroy_config(project6_cfg *config)
 {
 	put_mtd_device(config->mtd);
 }
 
+
 /**
- * Global state initialization, return 0 when ok, -1 on error
+ * @brief Prints the given config
+ *
+ * @param config Pointer to the config
  */
-static int init_config(int mtd_index, lkp_kv_cfg *config)
+static void print_config(project6_cfg *config)
+{
+	printk(PRINT_PREF "Config : \n");
+	printk(PRINT_PREF "=========\n");
+
+	printk(PRINT_PREF "mtd_index: %d\n", config->mtd_index);
+	printk(PRINT_PREF "nb_blocks: %d\n", config->nb_blocks);
+	printk(PRINT_PREF "block_size: %d\n", config->block_size);
+	printk(PRINT_PREF "page_size: %d\n", config->page_size);
+	printk(PRINT_PREF "pages_per_block: %d\n", config->pages_per_block);
+	printk(PRINT_PREF "read_only: %d\n", config->read_only);
+}
+
+
+/**
+ * @brief Initializes the given config
+ *
+ * @param mtd_index Partition index for the flash
+ * @param config Pointer to the config
+ *
+ * @return 0 for success, -1 for failure
+ */
+static int init_config(int mtd_index, project6_cfg *config)
 {
 	uint64_t tmp_blk_num;
 
@@ -320,41 +108,17 @@ static int init_config(int mtd_index, lkp_kv_cfg *config)
 	return 0;
 }
 
-/**
- * Print some statistics on the kernel log
- */
-void print_config(lkp_kv_cfg *config)
-{
-	printk(PRINT_PREF "Config : \n");
-	printk(PRINT_PREF "=========\n");
-
-	printk(PRINT_PREF "mtd_index: %d\n", config->mtd_index);
-	printk(PRINT_PREF "nb_blocks: %d\n", config->nb_blocks);
-	printk(PRINT_PREF "block_size: %d\n", config->block_size);
-	printk(PRINT_PREF "page_size: %d\n", config->page_size);
-	printk(PRINT_PREF "pages_per_block: %d\n", config->pages_per_block);
-	printk(PRINT_PREF "read_only: %d\n", config->read_only);
-}
-
-int read_bytes (int page_index, char *buf, lkp_kv_cfg *config,
-			size_t bytes)
-{
-	uint64_t addr;
-	size_t retlen;
-
-	/* compute the flash target address in bytes */
-	addr = ((uint64_t) page_index) * ((uint64_t) config->page_size);
-
-	/* call the NAND driver MTD to perform the read operation */
-	return config->mtd->_read(config->mtd, addr, bytes, &retlen,
-				 buf);
-}
 
 /**
- * Read the flash page with index page_index, data read are placed in buf
- * Retourne 0 when ok, something else on error
+ * @brief Reads a page from the flash
+ *
+ * @param page_index Index of the page
+ * @param buf Buffer where we need to read
+ * @param config Config for the partition
+ *
+ * @return 0 for success, otherwise appropriate error code
  */
-int read_page(int page_index, char *buf, lkp_kv_cfg *config)
+int read_page(int page_index, char *buf, project6_cfg *config)
 {
 	uint64_t addr;
 	size_t retlen;
@@ -368,13 +132,15 @@ int read_page(int page_index, char *buf, lkp_kv_cfg *config)
 }
 
 /**
- * Write the flash page with index page_index, data to write is in buf.
- * Returns:
- * 0 on success
- * -1 if we are in read-only mode
- * -2 when a write error occurs
+ * @brief Writes a page to the flash
+ *
+ * @param page_index Index of the page
+ * @param buf Buffer where we need to read
+ * @param config Config for the partition
+ *
+ * @return 0 for success, otherwise appropriate error code
  */
-int write_page(int page_index, const char *buf, lkp_kv_cfg *config)
+int write_page(int page_index, const char *buf, project6_cfg *config)
 {
 	uint64_t addr;
 	size_t retlen;
@@ -383,20 +149,19 @@ int write_page(int page_index, const char *buf, lkp_kv_cfg *config)
 	addr = ((uint64_t) page_index) * ((uint64_t) config->page_size);
 
 	/* call the NAND driver MTD to perform the write operation */
-	if (config->mtd->
-	    _write(config->mtd, addr, config->page_size, &retlen, buf) != 0)
-		return -2;
-
-	return 0;
+	return config->mtd->_write(config->mtd, addr,
+				   config->page_size, &retlen, buf);
 }
 
 /**
- * Callback for the erase operation done during the format process
+ * @brief Callback for datapartition erase operation
+ *
+ * @param e Pointer to erase info structure
  */
 void data_format_callback(struct erase_info *e)
 {
 	if (e->state != MTD_ERASE_DONE) {
-		printk(PRINT_PREF "Format error...");
+		printk(PRINT_PREF "Data Partition Format error...");
 		down(&data_config.format_lock);
 		data_config.format_done = -1;
 		up(&data_config.format_lock);
@@ -409,12 +174,14 @@ void data_format_callback(struct erase_info *e)
 }
 
 /**
- * Callback for the erase operation done during the format process
+ * @brief Callback for metadata partition erase operation
+ *
+ * @param e Pointer to erase info structure
  */
-static void metadata_format_callback(struct erase_info *e)
+void metadata_format_callback(struct erase_info *e)
 {
 	if (e->state != MTD_ERASE_DONE) {
-		printk(PRINT_PREF "Format error...");
+		printk(PRINT_PREF "MetaData Partition Format error...");
 		down(&meta_config.format_lock);
 		meta_config.format_done = -1;
 		up(&meta_config.format_lock);
@@ -426,7 +193,18 @@ static void metadata_format_callback(struct erase_info *e)
 	up(&meta_config.format_lock);
 }
 
-int erase_block(uint64_t block_index, int block_count, lkp_kv_cfg *config, void (*callback)(struct erase_info *e))
+/**
+ * @brief Performs erase of the given block
+ *
+ * @param block_index Index of the block to erase
+ * @param block_count Number of blocks to be erased
+ * @param config Config of the partition
+ * @param callback Callback to be called for erase
+ *
+ * @return -1 for failure, 0 for success
+ */
+int erase_block(uint64_t block_index, int block_count,
+		project6_cfg *config, void (*callback)(struct erase_info *e))
 {
 	struct erase_info ei;
 
@@ -446,9 +224,6 @@ int erase_block(uint64_t block_index, int block_count, lkp_kv_cfg *config, void 
 	if (config->mtd->_erase(config->mtd, &ei) != 0)
 		return -1;
 
-	/* on attend la fin effective de l'operation avec un spinlock.
-	 * C'est la fonction callback qui mettra format_done a 1 */
-	/* TODO change to a condwait here */
 	while (1)
 		if (!down_trylock(&config->format_lock)) {
 			if (config->format_done) {
@@ -465,10 +240,16 @@ int erase_block(uint64_t block_index, int block_count, lkp_kv_cfg *config, void 
 	return 0;
 }
 
+
 /**
- * Format operation: we erase the entire flash partition
+ * @brief Formats the entire partition
+ *
+ * @param config Config of the partition to be erased
+ * @param callback Callback to be called while erase
+ *
+ * @return 0 for success, otherwise appropriate error code
  */
-static int format_config(lkp_kv_cfg *config,
+static int format_config(project6_cfg *config,
 			 void (*callback)(struct erase_info *e))
 {
 	int ret;
@@ -487,29 +268,11 @@ static int format_config(lkp_kv_cfg *config,
 	return 0;
 }
 
-static int create_meta_data(lkp_kv_cfg *meta_config)
-{
-	uint32_t *signature = (uint32_t *)page_buffer;
-	size_t i;
-	int ret;
-
-	for (i = 0; i < meta_config->page_size; i++)
-		page_buffer[i] = 0xFF;
-
-	*signature = 0xdeadbeef;
-
-	*(signature+4) = total_written_page;
-
-	ret = write_page(0, page_buffer, meta_config);
-
-	if (ret != 0) {
-		printk(PRINT_PREF "Writing page for signature failed\n");
-		return ret;
-	}
-
-	return 0;
-}
-
+/**
+ * @brief Performs format of the disk
+ *
+ * @return 0 for success, otherwise appropriate error codes
+ */
 int format(void)
 {
 	int ret = 0;
@@ -530,14 +293,14 @@ int format(void)
 
 	total_written_page = 0;
 
-	ret = create_meta_data(&meta_config);
+	ret = project6_create_meta_data(&meta_config);
 
 	if (ret != 0) {
 		printk(PRINT_PREF "Creating metadata failed\n");
 		return ret;
 	}
 
-	ret = construct_meta_data(&meta_config, &data_config, false);
+	ret = project6_construct_meta_data(&meta_config, &data_config, false);
 
 	if (ret != 0) {
 		printk(PRINT_PREF "Constructing metadata failed\n");
@@ -549,7 +312,66 @@ int format(void)
 	return ret;
 }
 
+/**
+ * Module initialization function
+ */
+static int __init lkp_kv_init(void)
+{
+	printk(PRINT_PREF "Loading... \n");
 
+	if (init_config(0, &meta_config) != 0) {
+		printk(PRINT_PREF "Initialization error\n");
+		return -1;
+	}
+
+	if (init_config(1, &data_config) != 0) {
+		printk(PRINT_PREF "Initialization error\n");
+		return -1;
+	}
+
+	page_buffer = (uint8_t *)kmalloc(data_config.page_size, GFP_KERNEL);
+
+	if (page_buffer == NULL) {
+		printk(PRINT_PREF "Page buffer allocation failed\n");
+		return -ENOMEM;
+	}
+
+	project6_construct_meta_data(&meta_config, &data_config, true);
+
+	if (device_init() != 0) {
+		printk(PRINT_PREF "Virtual device creation error\n");
+		return -1;
+	}
+
+	return 0;
+}
+
+
+/**
+ * Module exit function
+ */
+static void __exit lkp_kv_exit(void)
+{
+	printk(PRINT_PREF "Exiting ... \n");
+
+	project6_flush_meta_data_to_flash(&meta_config);
+
+	project6_cache_clean();
+
+	device_exit();
+
+	destroy_config(&meta_config);
+	destroy_config(&data_config);
+
+	if (page_buffer)
+		kfree(page_buffer);
+
+	if (bitmap)
+		kfree(bitmap);
+
+	if (mapper)
+		kfree(mapper);
+}
 
 /* Setup init and exit functions */
 module_init(lkp_kv_init);
@@ -560,4 +382,4 @@ module_exit(lkp_kv_exit);
  */
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Abhishek Chauhan <zxcve@vt.edu>");
-MODULE_DESCRIPTION("LKP key-value store prototype");
+MODULE_DESCRIPTION("Project6 key-value store");
