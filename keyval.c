@@ -365,6 +365,160 @@ int get_keyval(const char *key, char *val)
 }
 
 /**
+ * @brief Perform update of key/value to flash
+ *
+ * @param key Pointer to the key
+ * @param val Pointer to the val
+ * @param vpage Virtual page where write is performed
+ * @param key_len Key Length for the key
+ * @param val_len Value Length of the value
+ * @param num_pages Number of pages to be written
+ *
+ * @return 0 for success, appropriate code otherwise
+ */
+static int update_key_value_to_flash(const char *key,
+				     const char *val,
+				     uint64_t vpage,
+				     uint32_t key_len,
+				     uint32_t val_len, uint32_t num_pages)
+{
+	uint32_t val_count = 0;
+	uint32_t key_count = 0;
+	uint32_t key_max_write = 0;
+	uint32_t size;
+	int marker;
+	uint64_t ppage;
+	int ret = 0;
+
+	project6_get_existing_mapping(vpage, &ppage);
+
+	/* prepare the buffer we are going to write on flash */
+	memset(page_buffer, 0x0, data_config.page_size);
+
+	marker = NEW_KEY;
+
+	memcpy(page_buffer, &marker, sizeof(uint32_t));
+
+	memcpy(page_buffer + 4, &num_pages, sizeof(uint32_t));
+
+	/* key size ... */
+	memcpy(page_buffer + 8, &key_len, sizeof(uint32_t));
+
+	/* ... value size ... */
+	memcpy(page_buffer + 12, &val_len, sizeof(uint32_t));
+
+	if (key_len + val_len + 16 <= data_config.page_size) {
+		memcpy(page_buffer + 16,
+		       key, key_len);
+
+		memcpy(page_buffer + 16 + key_len,
+		       val, val_len);
+
+
+		ret = write_page(ppage, page_buffer, &data_config);
+
+		if (ret) {
+			printk(PRINT_PREF "Writing page %llu failed", ppage);
+			return ret;
+		}
+	} else if (key_len + 16 <= data_config.page_size) {
+		memcpy(page_buffer + 16,
+		       key, key_len);
+
+		memcpy(page_buffer + 16 + key_len,
+		       val, data_config.page_size - 16 - key_len);
+
+		ret = write_page(ppage, page_buffer, &data_config);
+
+		if (ret) {
+			printk(PRINT_PREF "Writing page %llu failed", ppage);
+			return ret;
+		}
+
+		val_len = val_len - (data_config.page_size - (16 + key_len));
+
+		val_count = data_config.page_size - (16 + key_len);
+
+		ret = update_data_flash(val_len, val + val_count, &vpage);
+
+		if (ret) {
+			printk(PRINT_PREF "Updating the data on flash failed\n");
+			return ret;
+		}
+	} else {
+		memcpy(page_buffer + 16,
+		       key, data_config.page_size - 16);
+
+		ret = write_page(ppage, page_buffer, &data_config);
+
+		if (ret) {
+			printk(PRINT_PREF "Writing page %llu failed", ppage);
+			return ret;
+		}
+
+		printk(PRINT_PREF "Page %llx written successfully\n", ppage);
+
+		key_len = key_len - (data_config.page_size - 16);
+
+		key_count = data_config.page_size - 16;
+
+		key_max_write = key_len - key_len % (data_config.page_size - 4);
+
+		ret = update_data_flash(key_max_write, key + key_count, &vpage);
+
+		if (ret) {
+			printk(PRINT_PREF "Updating the key data on flash failed\n");
+			return ret;
+		}
+
+		key_count += key_max_write;
+		key_len = key_len - key_max_write;
+
+		if (key_len) {
+			memset(page_buffer, 0x0, data_config.page_size);
+
+			marker = PREVIOUS_KEY;
+
+			memcpy(page_buffer, &marker, sizeof(uint32_t));
+
+			memcpy(page_buffer + 4, key + key_count, key_len);
+
+			if (val_len > data_config.page_size - 4 - key_len) {
+				size = data_config.page_size - 4 - key_len;
+			} else
+				size = val_len;
+
+			memcpy(page_buffer + 4 + key_len, val, size);
+
+			val_len -= size;
+			val_count += size;
+
+			project6_get_existing_mapping(++vpage, &ppage);
+
+			ret = write_page(ppage, page_buffer, &data_config);
+
+			if (ret) {
+				printk(PRINT_PREF "Writing page %llu failed",
+					ppage);
+				return ret;
+			}
+		}
+
+		if (val_len) {
+			ret = update_data_flash(val_len, val + val_count,
+						&vpage);
+
+			if (ret) {
+				printk(PRINT_PREF "Updating the val data on flash failed\n");
+				return ret;
+			}
+		}
+	}
+
+	return ret;
+}
+
+/**
  * @brief Performs set/update of key
  *
  * @param key Key to be updated/set
@@ -381,13 +535,8 @@ int set_keyval(const char *key, const char *val)
 	int ret = 0;
 	int key_len;
 	int val_len;
-	int marker;
 	uint8_t state;
 	uint32_t num_pages = 0;
-	uint32_t val_count = 0;
-	uint32_t key_count = 0;
-	uint32_t key_max_write = 0;
-	uint32_t size;
 
 	if (total_written_page >
 	    (data_config.nb_blocks * data_config.pages_per_block) / 2) {
@@ -424,9 +573,6 @@ int set_keyval(const char *key, const char *val)
 
 	val_len = strlen(val);
 
-	printk("SET_KEY: %d key_len %d val_len %s key, %s val\n",
-	       key_len, val_len, key, val);
-
 	if ((12 + key_len + val_len) % (data_config.page_size - 4) == 0)
 		num_pages = (12 + key_len + val_len) /
 			(data_config.page_size - 4);
@@ -434,8 +580,6 @@ int set_keyval(const char *key, const char *val)
 		num_pages = (12 + key_len + val_len) /
 			(data_config.page_size - 4) + 1;
 
-	printk("Number of page is %d val_len %d key %d vpage %llx\n",
-	       num_pages, val_len, key_len, vpage);
 
 	while (counter <= data_config.nb_blocks * data_config.pages_per_block) {
 
@@ -450,138 +594,15 @@ int set_keyval(const char *key, const char *val)
 				project6_cache_update(key, val,
 						      vpage, num_pages);
 
-				project6_get_existing_mapping(vpage, &ppage);
-
-				/* prepare the buffer we are going to write on flash */
-				memset(page_buffer, 0x0, data_config.page_size);
-
-				marker = NEW_KEY;
-
-				memcpy(page_buffer, &marker, sizeof(uint32_t));
-
-				memcpy(page_buffer + 4, &num_pages, sizeof(uint32_t));
-
-				/* key size ... */
-				memcpy(page_buffer + 8, &key_len, sizeof(uint32_t));
-
-				/* ... value size ... */
-				memcpy(page_buffer + 12, &val_len, sizeof(uint32_t));
-
-				if (key_len + val_len + 16 <= data_config.page_size) {
-					memcpy(page_buffer + 16,
-					       key, key_len);
-
-					memcpy(page_buffer + 16 + key_len,
-					       val, val_len);
-
-
-					ret = write_page(ppage, page_buffer, &data_config);
-
-					if (ret) {
-						printk(PRINT_PREF "Writing page %llu failed", ppage);
-						goto fail;
-					}
-					printk(PRINT_PREF "Page %llx written successfully\n", ppage);
-					return ret;
-				} else if (key_len + 16 <= data_config.page_size) {
-					memcpy(page_buffer + 16,
-					       key, key_len);
-
-					memcpy(page_buffer + 16 + key_len,
-					       val, data_config.page_size - 16 -key_len);
-
-					ret = write_page(ppage, page_buffer, &data_config);
-
-					if (ret) {
-						printk(PRINT_PREF "Writing page %llu failed", ppage);
-						goto fail;
-					}
-
-					val_len = val_len - (data_config.page_size - (16 + key_len));
-
-					val_count = data_config.page_size - (16 + key_len);
-
-					printk("Second config val_len %d count %d\n", val_len, val_count);
-					ret = update_data_flash(val_len, val + val_count, &vpage);
-
-					if (ret) {
-						printk(PRINT_PREF "Updating the data on flash failed\n");
-						goto fail;
-					}
-
-					return ret;
-				} else {
-					memcpy(page_buffer + 16,
-					       key, data_config.page_size - 16);
-
-					ret = write_page(ppage, page_buffer, &data_config);
-
-					if (ret) {
-						printk(PRINT_PREF "Writing page %llu failed", ppage);
-						goto fail;
-					}
-					printk(PRINT_PREF "Page %llx written successfully\n", ppage);
-
-					key_len = key_len - (data_config.page_size - 16);
-
-					key_count = data_config.page_size - 16;
-
-					key_max_write = key_len - key_len % (data_config.page_size - 4);
-
-					printk("Third config key_len %d key_count %d key_max_write %d\n", key_len, key_count, key_max_write);
-					ret = update_data_flash(key_max_write, key + key_count, &vpage);
-
-					if (ret) {
-						printk(PRINT_PREF "Updating the key data on flash failed\n");
-						goto fail;
-					}
-
-					key_count += key_max_write;
-					key_len = key_len - key_max_write;
-
-					if (key_len) {
-						memset(page_buffer, 0x0, data_config.page_size);
-
-						marker = PREVIOUS_KEY;
-
-						memcpy(page_buffer, &marker, sizeof(uint32_t));
-
-						memcpy(page_buffer + 4, key + key_count, key_len);
-
-						if (val_len > data_config.page_size - 4 - key_len) {
-							size = data_config.page_size - 4 - key_len;
-						} else
-							size = val_len;
-
-						printk("key len %d size %d key count %d\n", key_len, size, key_count);
-						memcpy(page_buffer + 4 + key_len, val, size);
-
-						val_len -= size;
-						val_count += size;
-
-						project6_get_existing_mapping(++vpage, &ppage);
-
-						printk("val len %d val count %d page %llx\n", val_len, val_count, ppage);
-						ret = write_page(ppage, page_buffer, &data_config);
-
-						if (ret) {
-							printk(PRINT_PREF "Writing page %llu failed", ppage);
-							goto fail;
-						}
-					}
-
-					if (val_len) {
-						ret = update_data_flash(val_len, val + val_count, &vpage);
-
-						if (ret) {
-							printk(PRINT_PREF "Updating the val data on flash failed\n");
-							goto fail;
-						}
-					}
-
+				ret = update_key_value_to_flash(key, val,
+								vpage, key_len,
+								val_len,
+								num_pages);
+				if (ret) {
+					printk(PRINT_PREF "Update to flash failed for set \n");
+					goto fail;
 				}
-
-				return ret;
+				return 0;
 			} else if (ret == -ENOMEM) {
 				printk(PRINT_PREF "No memory to perform mapping \n");
 				goto fail;
