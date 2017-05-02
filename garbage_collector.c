@@ -67,8 +67,6 @@ static void project6_reclaim_pages(uint64_t ppage)
 						PAGE_GARBAGE_RECLAIMED;
 					total_written_page--;
 					break;
-					printk(PRINT_PREF "Reclaim vpage %llu\n"
-					       , j);
 				}
 			}
 		}
@@ -133,8 +131,6 @@ static int project6_migrate_block(uint64_t block_num)
 				return ret;
 			}
 
-			printk("Moved page %llu to page %llu\n", ppage, npage);
-
 			project6_set_ppage_state(ppage, PAGE_INVALID);
 
 		}
@@ -172,7 +168,6 @@ int project6_garbage_collection(int threshold)
 	else
 		old_jiffies = jiffies;
 */
-	printk(PRINT_PREF "Starting Garbage Collection \n");
 	while (ppage < num_pages) {
 
 		status = project6_get_ppage_state(ppage);
@@ -188,8 +183,6 @@ int project6_garbage_collection(int threshold)
 
 			if (invalid_page_counter >= data_config.pages_per_block
 								/ threshold) {
-				printk(PRINT_PREF "Migration for %llu block\n",
-				       block_counter);
 				ret = project6_migrate_block(block_counter);
 
 				if (ret) {

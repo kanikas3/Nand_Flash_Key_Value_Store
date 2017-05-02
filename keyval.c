@@ -391,8 +391,6 @@ static int update_key_value_to_flash(const char *key,
 			return ret;
 		}
 
-		printk(PRINT_PREF "Page %llx written successfully\n", ppage);
-
 		key_len = key_len - (data_config.page_size - 16);
 
 		key_count = data_config.page_size - 16;
@@ -549,7 +547,7 @@ int set_keyval(const char *key, const char *val)
 		counter++;
 	}
 
-	printk("Set key failed as no space was found\n");
+	printk(PRINT_PREF "Set key failed as no space was found\n");
 fail:
 	project6_cache_remove(key);
 	return -1;
@@ -602,8 +600,6 @@ int del_keyval(const char *key)
 		printk(PRINT_PREF "Could not delete key %s\n", key);
 		return -1;
 	}
-	else
-		printk(PRINT_PREF "Deleted key %s\n", key);
 
 	return 0;
 }
@@ -629,8 +625,6 @@ int get_keyval(const char *key, char *val)
 	int ret;
 
 	if (project6_cache_lookup(key, val, &vpage, &num_pages)) {
-		printk("GET_KEY: %s key, %s val\n",
-		       key, val);
 		return 0;
 	}
 
@@ -641,14 +635,14 @@ int get_keyval(const char *key, char *val)
 		state = project6_get_existing_mapping(vpage, &ppage);
 
 		if (state == PAGE_NOT_MAPPED) {
-			printk("Get key failed as key was not found\n");
+			printk(PRINT_PREF "Get key failed as key was not found\n");
 			return -1;
 		}
 
 		if (state == PAGE_VALID) {
 			ret = read_page(ppage, page_buffer, &data_config);
 			if (ret) {
-				printk("Reading page has failed in get key\n");
+				printk(PRINT_PREF "Reading page has failed in get key\n");
 				return -1;
 			}
 
@@ -664,11 +658,9 @@ int get_keyval(const char *key, char *val)
 					     vpage)) {
 					if (!find_value(val, key_len,
 						val_len, num_pages, vpage)) {
-						printk("Get key failed as key was not found on flash\n");
+						printk(PRINT_PREF "Get key failed as key was not found on flash\n");
 						return -1;
 					}
-					printk("GET_KEY: %d key_len %d val_len %s key, %s val\n",
-					       key_len, val_len, key, val);
 					project6_cache_add(key, val, vpage,
 							   num_pages);
 					return 0;
@@ -680,6 +672,6 @@ int get_keyval(const char *key, char *val)
 		counter++;
 	}
 
-	printk("Get key failed as key was not found\n");
+	printk(PRINT_PREF "Get key failed as key was not found\n");
 	return -1;
 }

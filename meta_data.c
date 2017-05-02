@@ -215,7 +215,7 @@ void project6_flush_meta_data_to_flash(project6_cfg *config)
 		block_count = total_pages / config->pages_per_block;
 
 	if (erase_block(0, block_count, config, metadata_format_callback)) {
-		printk("Erasing the block device failed while flushing\n");
+		printk(PRINT_PREF "Erasing the block device failed while flushing\n");
 		return;
 	}
 
@@ -234,15 +234,6 @@ void project6_flush_meta_data_to_flash(project6_cfg *config)
 	for (i = mapper_start; i < mapper_start + mapper_pages ; i++) {
 		if (write_page(i, byte_mapper + (j) * config->page_size,
 			       config) != 0) {
-			printk(PRINT_PREF "Write for %lu page failed\n", i);
-		}
-		j++;
-	}
-	j = 0;
-
-	for (i = mapper_start; i < mapper_start + mapper_pages ; i++) {
-		if (read_page(i, byte_mapper + (j) * config->page_size,
-			      config) != 0) {
 			printk(PRINT_PREF "Write for %lu page failed\n", i);
 		}
 		j++;

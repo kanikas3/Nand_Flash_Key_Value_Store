@@ -145,9 +145,6 @@ static int create_mapping(uint64_t vpage, uint64_t *ppage)
 
 	total_written_page++;
 
-	printk(PRINT_PREF "Mapped ppage 0x%llx to vpage 0x%llx \n",
-	       *ppage, vpage);
-
 	return 0;
 }
 
@@ -191,8 +188,6 @@ int project6_create_mapping_new_block(uint64_t vpage, uint64_t *ppage,
 
 	total_written_page++;
 
-	printk(PRINT_PREF "Mapped ppage 0x%llx to  vpage 0x%llx \n",
-	       *ppage, vpage);
 	return 0;
 }
 
@@ -291,8 +286,6 @@ int project6_mark_vpage_invalid(uint64_t vpage, uint64_t num_pages)
 
 		project6_set_ppage_state(ppage, PAGE_INVALID);
 
-		printk(PRINT_PREF "Mark invalid ppage 0x%llx vpage 0x%llx \n",
-		       ppage, vpage);
 	}
 
 	return 0;
