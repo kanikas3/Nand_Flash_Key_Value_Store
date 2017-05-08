@@ -37,7 +37,11 @@ MODULE_PARM_DESC(MTD_INDEX, "Index of target mtd partition");
  */
 static int __init lkp_kv_init(void)
 {
+	ktime_t kt, start_kt, stop_kt;
+
 	printk(PRINT_PREF "Loading... \n");
+
+	start_kt = ktime_get();
 
 	if (init_config(MTD_INDEX) != 0) {
 		printk(PRINT_PREF "Initialization error\n");
@@ -48,6 +52,12 @@ static int __init lkp_kv_init(void)
 		printk(PRINT_PREF "Virtual device creation error\n");
 		return -1;
 	}
+
+	stop_kt = ktime_get();
+
+	kt = ktime_sub(stop_kt, start_kt);
+
+	printk(PRINT_PREF "Mount time: %llu usecs\n", (kt.tv64)/1000);
 
 	return 0;
 }

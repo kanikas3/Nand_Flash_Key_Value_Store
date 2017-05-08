@@ -2,7 +2,7 @@ obj-m += prototype.o
 prototype-objs := core.o device.o
 
 # Kernel source root directory :
-KERN_DIR=/home/zxcve/Downloads/VM/linux-4.0.9
+KERN_DIR=/home/zxcve/Project6/VM/linux-4.0.9
 # Target architecture :
 ARCH=x86_64
 
