@@ -62,9 +62,9 @@ static unsigned hash_string (const char *str, unsigned bits)
  *
  * @return 0 on success, -ENOMEM on failure
  */
+#if ENABLE_CACHE
 static int index_insert(const char* key, struct cached_node *ptr)
 {
-#if ENABLE_CACHE
 	struct index_item *node;
 	node = vmalloc(sizeof(struct index_item));
 	if(!node) {
@@ -75,9 +75,9 @@ static int index_insert(const char* key, struct cached_node *ptr)
 	node->ptr = ptr;
 
 	hlist_add_head(&node->hlist_elem, &kv_index_table[hash_string(key, HASH_SIZE(kv_index_table))]);
-#endif
 	return 0;
 }
+#endif
 
 
 /**
@@ -85,9 +85,9 @@ static int index_insert(const char* key, struct cached_node *ptr)
  *
  * @param key Key to be deleted from the hash table
  */
+#if ENABLE_CACHE
 static void index_delete(const char *key)
 {
-#if ENABLE_CACHE
 	struct index_item *node;
 	struct hlist_node *tmp;
 	hlist_for_each_entry_safe(node, tmp, &kv_index_table[hash_string(key, HASH_SIZE(kv_index_table))], hlist_elem)
@@ -95,15 +95,15 @@ static void index_delete(const char *key)
 		hlist_del(&node->hlist_elem);
 		vfree(node);
 	}
-#endif
 }
+#endif
 
 /**
  * @brief Deletes the entire hash table
  */
+#if ENABLE_CACHE
 static void index_clear(void)
 {
-#if ENABLE_CACHE
 	int bkt;
 	struct index_item *node;
 	struct hlist_node *tmp;
@@ -112,8 +112,8 @@ static void index_clear(void)
 		hash_del(&node->hlist_elem);
 		vfree(node);
 	}
-#endif
 }
+#endif
 
 /**
  * @brief Gets the key from the hash table
@@ -122,9 +122,9 @@ static void index_clear(void)
  *
  * @return The pointer to the node in dll, otherwise NULL
  */
+#if ENABLE_CACHE
 static void * index_get(const char* key)
 {
-#if ENABLE_CACHE
 	struct index_item *node;
 	hlist_for_each_entry(node,
 			     &kv_index_table[hash_string(
@@ -133,17 +133,16 @@ static void * index_get(const char* key)
 		if(strcmp(node->key, key) == 0)
 			return node->ptr;
 	}
-#endif
 	return NULL;
-
 }
+#endif
 
 /**
  * @brief Evicts the LRU node from the cache
  */
+#if ENABLE_CACHE
 static void cache_evict (void)
 {
-#if ENABLE_CACHE
 	struct cached_node *node =
 		list_first_entry(&cache_list, struct cached_node, list);
 
@@ -156,8 +155,8 @@ static void cache_evict (void)
 	vfree(node);
 
 	total_elements--;
-#endif
 }
+#endif
 
 /**
  * @brief Adds the given key, val into the LRU Cache
