@@ -90,6 +90,13 @@ static long device_ioctl(struct file *file, unsigned int ioctl_num,
 
 			key = (char *)vmalloc((skey.key_len + 1) * sizeof(char));
 
+			if (!key) {
+				ret = -1;
+				put_user(ret,
+					 (int *)&(((keyt *) (ioctl_param))->status));
+				break;
+			}
+
 			/* now that we have the character string sizes, we get get the
 			 * string themselves */
 			err_bytes_copied +=
@@ -98,7 +105,7 @@ static long device_ioctl(struct file *file, unsigned int ioctl_num,
 			if (!err_bytes_copied)
 				ret = del_keyval(key);	/* call module core function */
 			else
-				ret = -7;
+				ret = -1;
 
 			put_user(ret,
 				 (int *)&(((keyt *) (ioctl_param))->status));
@@ -124,7 +131,24 @@ static long device_ioctl(struct file *file, unsigned int ioctl_num,
 					   sizeof(keyval));
 
 			key = (char *)vmalloc((kv.key_len + 1) * sizeof(char));
+
+			if (!key) {
+				ret = -1;
+				put_user(ret,
+					 (int *)&(((keyval *) (ioctl_param))->status));
+				break;
+			}
+
 			val = (char *)vmalloc((kv.val_len + 1) * sizeof(char));
+
+			if (!val) {
+				ret = -1;
+				vfree(key);
+				put_user(ret,
+					 (int *)&(((keyval *) (ioctl_param))->status));
+				break;
+			}
+
 			/* now that we have the character string sizes, we get get the
 			 * string themselves */
 			err_bytes_copied +=
@@ -135,7 +159,7 @@ static long device_ioctl(struct file *file, unsigned int ioctl_num,
 			if (!err_bytes_copied)
 				ret = set_keyval(key, val);	/* call module core function */
 			else
-				ret = -7;
+				ret = -1;
 
 			/* copy return code to userspace */
 			put_user(ret,
@@ -161,9 +185,24 @@ static long device_ioctl(struct file *file, unsigned int ioctl_num,
 					   sizeof(keyval));
 
 			key = (char *)vmalloc((kv.key_len + 1) * sizeof(char));
-			val =
-			    (char *)vmalloc((data_config.page_size) * sizeof(char));
 
+			if (!key) {
+				ret = -1;
+				put_user(ret,
+					 (int *)&(((keyval *) (ioctl_param))->status));
+				break;
+			}
+
+			val =
+			    (char *)vmalloc(4 * (data_config.page_size)
+					    * sizeof(char));
+			if (!val) {
+				ret = -1;
+				vfree(key);
+				put_user(ret,
+					 (int *)&(((keyval *) (ioctl_param))->status));
+				break;
+			}
 			/* get the key */
 			err_bytes_copied +=
 			    copy_from_user(key, kv.key, kv.key_len + 1);
@@ -179,7 +218,7 @@ static long device_ioctl(struct file *file, unsigned int ioctl_num,
 			}
 
 			if (err_bytes_copied)
-				ret = -5;
+				ret = -1;
 
 			/* copy return code to userspace */
 			put_user(ret,
