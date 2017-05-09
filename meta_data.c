@@ -34,6 +34,8 @@ static uint64_t bitmap_pages;
 static uint64_t mapper_start;
 static uint64_t mapper_pages;
 
+/* Jiffies for controlling the meta-data flush */
+static unsigned long old_meta_jiffies = 0;
 
 #define PRINT_PREF KERN_INFO "META-DATA "
 
@@ -238,4 +240,20 @@ void project6_flush_meta_data_to_flash(project6_cfg *config)
 		}
 		j++;
 	}
+}
+
+/**
+ * @brief Flush the meta-data on periodic basis
+ */
+void project6_flush_meta_data_timely(void)
+{
+
+	if (old_meta_jiffies == 0)
+		old_meta_jiffies = jiffies;
+	else if (time_before(jiffies, old_meta_jiffies + 1 * HZ / 3))
+		return;
+	else
+		old_meta_jiffies = jiffies;
+
+	project6_flush_meta_data_to_flash(&meta_config);
 }

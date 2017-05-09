@@ -40,6 +40,7 @@ typedef struct {
 } project6_cfg;
 
 extern project6_cfg data_config;
+extern project6_cfg meta_config;
 extern uint8_t *page_buffer;
 extern uint64_t total_written_page;
 extern uint8_t *bitmap;
@@ -236,4 +237,8 @@ int project6_construct_meta_data(project6_cfg *meta_config,
  */
 void project6_flush_meta_data_to_flash(project6_cfg *config);
 
+/**
+ * @brief Flush the meta-data on periodic basis
+ */
+void project6_flush_meta_data_timely(void);
 #endif /* LKP_KV_H */

@@ -477,6 +477,7 @@ int set_keyval(const char *key, const char *val)
 		}
 	}
 
+	project6_flush_meta_data_timely();
 
 	if (!project6_cache_lookup(key, NULL, &vpage, &num_pages)) {
 
@@ -575,6 +576,8 @@ int del_keyval(const char *key)
 		}
 	}
 
+	project6_flush_meta_data_timely();
+
 	if (!project6_cache_lookup(key, NULL, &vpage, &num_pages)) {
 		vpage = hash(key);
 
@@ -626,6 +629,8 @@ int get_keyval(const char *key, char *val)
 	uint32_t num_pages;
 	uint8_t state;
 	int ret;
+
+	project6_flush_meta_data_timely();
 
 	if (project6_cache_lookup(key, val, &vpage, &num_pages)) {
 		return 0;

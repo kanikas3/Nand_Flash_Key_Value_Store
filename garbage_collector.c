@@ -32,7 +32,7 @@
 uint64_t total_written_page = 0;
 
 /* Jiffies for controlling the garbage collector */
-unsigned long old_jiffies = 0;
+static unsigned long old_jiffies = 0;
 
 #define PRINT_PREF KERN_INFO "GARBAGE_COLLECTOR "
 
