@@ -576,13 +576,11 @@ int del_keyval(const char *key)
 	}
 
 	if (!project6_cache_lookup(key, NULL, &vpage, &num_pages)) {
-	//	printk("Not Found in the cache %s \n", key);
 		vpage = hash(key);
 
 		ret = get_key_page(key, vpage, &lpage, &num_pages);
 
 		if (!ret) {
-	//		printk("marking pages 0x%llx num %d for %s \n", lpage, num_pages, key);
 			ret = project6_mark_vpage_invalid(lpage, num_pages);
 
 			if (ret) {
@@ -594,13 +592,12 @@ int del_keyval(const char *key)
 			printk("No pages were found \n");
 		}
 	} else {
-	//	printk("Found in the cache %s \n", key);
 		ret = project6_mark_vpage_invalid(vpage, num_pages);
 		if (ret) {
 			printk(PRINT_PREF "Mark invalid failed for 0x%llx num %d\n",
 			       vpage, num_pages);
-		}
-		project6_cache_remove(key);
+		} else
+			project6_cache_remove(key);
 	}
 	if (ret) {
 		printk(PRINT_PREF "Could not delete key \n");
