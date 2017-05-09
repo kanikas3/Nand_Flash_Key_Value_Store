@@ -19,7 +19,7 @@
 #define FNV_32_BASIS 2166136261u
 
 /* Configure the number of cache pages here */
-#define NUM_CACHE_PAGES 1000
+#define NUM_CACHE_PAGES 64
 #define KV_HASH_BITS 20
 
 /* Head of the double link list of LRU cache */

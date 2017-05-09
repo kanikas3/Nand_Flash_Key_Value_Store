@@ -279,8 +279,6 @@ static int format_config(project6_cfg *config,
 
 	config->read_only = 0;
 
-	printk(PRINT_PREF "Format done\n");
-
 	return 0;
 }
 
