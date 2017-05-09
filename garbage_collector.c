@@ -186,7 +186,7 @@ int project6_garbage_collection(int threshold)
 				ret = project6_migrate_block(block_counter);
 
 				if (ret) {
-					printk(PRINT_PREF "Migration of block %llu for garbage collection failed \n", block_counter);
+				//	printk(PRINT_PREF "Migration of block %llu for garbage collection failed \n", block_counter);
 					return ret;
 				}
 

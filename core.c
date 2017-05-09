@@ -22,6 +22,7 @@
 #include <linux/init.h>
 #include <linux/mtd/mtd.h>
 #include <linux/slab.h>
+#include <linux/delay.h>
 #include <linux/string.h>
 #include <linux/jiffies.h>
 #include "core.h"
@@ -142,6 +143,7 @@ int read_page(int page_index, char *buf, project6_cfg *config)
 	/* compute the flash target address in bytes */
 	addr = ((uint64_t) page_index) * ((uint64_t) config->page_size);
 
+	udelay(20);
 	/* call the NAND driver MTD to perform the read operation */
 	return config->mtd->_read(config->mtd, addr, config->page_size, &retlen,
 				 buf);
@@ -164,6 +166,7 @@ int write_page(int page_index, const char *buf, project6_cfg *config)
 	/* compute the flash target address in bytes */
 	addr = ((uint64_t) page_index) * ((uint64_t) config->page_size);
 
+	udelay(100);
 	/* call the NAND driver MTD to perform the write operation */
 	return config->mtd->_write(config->mtd, addr,
 				   config->page_size, &retlen, buf);

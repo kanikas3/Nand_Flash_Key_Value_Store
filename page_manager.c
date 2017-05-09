@@ -208,13 +208,15 @@ int project6_create_mapping_multipage(uint64_t vpage, uint32_t num_pages)
 	while (page < num_pages) {
 		if (mapper[lpage] != PAGE_UNALLOCATED &&
 		    mapper[lpage] != PAGE_GARBAGE_RECLAIMED) {
-			printk("multipage mapping not allowed for %llu \n",
-			       lpage);
+	//		printk("multipage mapping not allowed for %llu \n",
+	//		       lpage);
 			return -EPERM;
 		}
 		if (lpage == data_config.nb_blocks *
 				data_config.pages_per_block)
 			return -EPERM;
+
+	//	mapper[lpage] = PAGE_GARBAGE_RECLAIMED;
 		lpage++;
 		page++;
 	}

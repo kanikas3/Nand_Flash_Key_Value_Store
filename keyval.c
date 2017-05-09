@@ -26,6 +26,7 @@
 
 #define PRINT_PREF KERN_INFO "[KEY_VAL]: "
 
+
 /* Taken from http://www.cse.yorku.ca/~oz/hash.html */
 static uint64_t hash(const char *str)
 {
@@ -189,6 +190,7 @@ static bool find_key(const char *key, uint32_t num_pages,
 	if (key_len <= data_config.page_size - 16) {
 
 		if (!strncmp(key, (page_buffer + 16), key_len)) {
+		//	printk("GET found key at 0x%llx %d \n", vpage, num_pages);
 			return true;
 		}
 	} else {
@@ -349,7 +351,6 @@ static int update_key_value_to_flash(const char *key,
 		memcpy(page_buffer + 16 + key_len,
 		       val, val_len);
 
-
 		ret = write_page(ppage, page_buffer, &data_config);
 
 		if (ret) {
@@ -471,6 +472,7 @@ int set_keyval(const char *key, const char *val)
 	uint8_t state;
 	uint32_t num_pages = 0;
 
+
 	if (total_written_page >
 	    (data_config.nb_blocks * data_config.pages_per_block) / 2) {
 
@@ -479,6 +481,7 @@ int set_keyval(const char *key, const char *val)
 		}
 	}
 
+
 	if (!project6_cache_lookup(key, NULL, &vpage, &num_pages)) {
 
 		vpage = hash(key);
@@ -486,6 +489,8 @@ int set_keyval(const char *key, const char *val)
 		ret = get_key_page(key, vpage, &lpage, &num_pages);
 
 		if (!ret) {
+
+
 			ret = project6_mark_vpage_invalid(lpage, num_pages);
 
 			if (ret) {
@@ -576,19 +581,25 @@ int del_keyval(const char *key)
 	}
 
 	if (!project6_cache_lookup(key, NULL, &vpage, &num_pages)) {
+	//	printk("Not Found in the cache %s \n", key);
 		vpage = hash(key);
 
 		ret = get_key_page(key, vpage, &lpage, &num_pages);
 
 		if (!ret) {
+	//		printk("marking pages 0x%llx num %d for %s \n", lpage, num_pages, key);
 			ret = project6_mark_vpage_invalid(lpage, num_pages);
 
 			if (ret) {
 				printk(PRINT_PREF "Mark invalid failed for 0x%llx num %d \n",
 				       lpage, num_pages);
 			}
+		} else {
+
+			printk("No pages were found for %s \n", key);
 		}
 	} else {
+	//	printk("Found in the cache %s \n", key);
 		ret = project6_mark_vpage_invalid(vpage, num_pages);
 		if (ret) {
 			printk(PRINT_PREF "Mark invalid failed for 0x%llx num %d\n",
@@ -635,7 +646,7 @@ int get_keyval(const char *key, char *val)
 		state = project6_get_existing_mapping(vpage, &ppage);
 
 		if (state == PAGE_NOT_MAPPED) {
-			printk(PRINT_PREF "Get key failed as key was not found\n");
+			printk(PRINT_PREF "Get key failed as page was not mapped \n");
 			return -1;
 		}
 
@@ -653,17 +664,21 @@ int get_keyval(const char *key, char *val)
 				val_len = *((uint32_t *)(page_buffer + 12));
 				num_pages = *((uint32_t *)(page_buffer + 4));
 
+				//if (key_len == *((uint32_t *)(page_buffer + 8)))
+				{
 
-				if (find_key(key, num_pages, key_len,
-					     vpage)) {
-					if (!find_value(val, key_len,
-						val_len, num_pages, vpage)) {
-						printk(PRINT_PREF "Get key failed as key was not found on flash\n");
-						return -1;
+					if (find_key(key, num_pages, key_len,
+						     vpage)) {
+						if (!find_value(val, key_len,
+								val_len, num_pages, vpage)) {
+							printk(PRINT_PREF "Get key failed as value was not found on flash\n");
+							return -1;
+						}
+
+						project6_cache_add(key, val, vpage,
+								   num_pages);
+						return 0;
 					}
-					project6_cache_add(key, val, vpage,
-							   num_pages);
-					return 0;
 				}
 			}
 		}
@@ -672,6 +687,6 @@ int get_keyval(const char *key, char *val)
 		counter++;
 	}
 
-	printk(PRINT_PREF "Get key failed as key was not found\n");
+	printk(PRINT_PREF "Get key failed as pages exhausted\n");
 	return -1;
 }
