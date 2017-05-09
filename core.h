@@ -212,10 +212,11 @@ void project6_set_ppage_state(uint64_t ppage, uint8_t state);
  * @brief Creates a new metadata from scratch
  *
  * @param meta_config Configuration of the meta-data
+ * @param block_num block used to create the meta-data
  *
  * @return returns 0 on success, otherwise appropriate error code
  */
-int project6_create_meta_data(project6_cfg *meta_config);
+int project6_create_meta_data(project6_cfg *meta_config, uint32_t block_num);
 
 /**
  * @brief Construct the in memory meta-data

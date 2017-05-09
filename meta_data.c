@@ -34,6 +34,9 @@ static uint64_t bitmap_pages;
 static uint64_t mapper_start;
 static uint64_t mapper_pages;
 
+
+static uint64_t meta_data_block = 0;
+
 /* Jiffies for controlling the meta-data flush */
 static unsigned long old_meta_jiffies = 0;
 
@@ -43,10 +46,11 @@ static unsigned long old_meta_jiffies = 0;
  * @brief Creates a new metadata from scratch
  *
  * @param meta_config Configuration of the meta-data
+ * @param block_num block used to create the meta-data
  *
  * @return returns 0 on success, otherwise appropriate error code
  */
-int project6_create_meta_data(project6_cfg *meta_config)
+int project6_create_meta_data(project6_cfg *meta_config, uint32_t block_num)
 {
 	uint32_t *signature = (uint32_t *)page_buffer;
 	size_t i;
@@ -59,7 +63,8 @@ int project6_create_meta_data(project6_cfg *meta_config)
 
 	*(signature+4) = total_written_page;
 
-	ret = write_page(0, page_buffer, meta_config);
+	ret = write_page(block_num * meta_config->pages_per_block,
+			 page_buffer, meta_config);
 
 	if (ret) {
 		printk(PRINT_PREF "Writing page for signature failed\n");
@@ -93,22 +98,36 @@ int project6_construct_meta_data(project6_cfg *meta_config,
 	size_t j = 0;
 	int ret;
 
+	uint32_t block_count = 0;
+	uint64_t start_page = 0;
+
 	uint8_t *byte_mapper;
 
 	if (read_disk == true) {
-		ret = read_page(0, page_buffer, meta_config);
-		if (ret) {
-			printk(PRINT_PREF "Read for constructing meta-data failed\n");
-			return ret;
-		}
+		while (block_count < meta_config->nb_blocks) {
 
+			start_page = block_count * meta_config->pages_per_block;
+
+			ret = read_page(start_page, page_buffer, meta_config);
+			if (ret) {
+				printk(PRINT_PREF "Read for constructing meta-data failed\n");
+				return ret;
+			}
+
+			if (*signature == 0xdeadbeef) {
+				total_written_page = *(signature + 4);
+				break;
+			}
+			block_count++;
+		}
 		if (*signature != 0xdeadbeef) {
 			printk(PRINT_PREF "You must format the flash before usage\n");
 			return -1;
 		}
-
-		total_written_page = *(signature + 4);
 	}
+
+	bitmap_start = start_page + 1;
+	meta_data_block = block_count;
 
 	if (bitmap_size % 4 == 0)
 		bitmap_bytes = bitmap_size / 4;
@@ -216,12 +235,23 @@ void project6_flush_meta_data_to_flash(project6_cfg *config)
 	else
 		block_count = total_pages / config->pages_per_block;
 
-	if (erase_block(0, block_count, config, metadata_format_callback)) {
+	if (erase_block(meta_data_block, block_count,
+			config, metadata_format_callback)) {
 		printk(PRINT_PREF "Erasing the block device failed while flushing\n");
 		return;
 	}
 
-	project6_create_meta_data(config);
+	meta_data_block += block_count;
+
+	if (meta_data_block + block_count >= config->nb_blocks) {
+		meta_data_block = 0;
+	}
+
+	project6_create_meta_data(config, meta_data_block);
+
+	bitmap_start = meta_data_block * config->pages_per_block + 1;
+
+	mapper_start = bitmap_pages + bitmap_start + 1;
 
 	for (i = bitmap_start; i < bitmap_start + bitmap_pages ; i++) {
 		if (write_page(i, bitmap + (j) * config->page_size,

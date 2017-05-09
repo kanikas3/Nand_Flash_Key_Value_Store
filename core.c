@@ -309,7 +309,7 @@ int format(void)
 
 	total_written_page = 0;
 
-	ret = project6_create_meta_data(&meta_config);
+	ret = project6_create_meta_data(&meta_config, 0);
 
 	if (ret != 0) {
 		printk(PRINT_PREF "Creating metadata failed\n");
