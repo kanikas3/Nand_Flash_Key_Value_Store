@@ -160,14 +160,14 @@ int project6_garbage_collection(int threshold)
 	int page_per_block_counter = 0;
 	uint64_t block_counter = 0;
 	int ret;
-/*
+
 	if (old_jiffies == 0)
 		old_jiffies = jiffies;
 	else if (time_before(jiffies, old_jiffies + 1 * HZ / 3))
 		return 0;
 	else
 		old_jiffies = jiffies;
-*/
+
 	while (ppage < num_pages) {
 
 		status = project6_get_ppage_state(ppage);
